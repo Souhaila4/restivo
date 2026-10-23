@@ -17,7 +17,8 @@ async function handleResponse<T>(res: Response): Promise<T> {
     throw new ApiError(
       (json as { code?: string }).code ?? "UNKNOWN_ERROR",
       (json as { message?: string }).message ?? "An unexpected error occurred.",
-      res.status
+      res.status,
+      (json as { field?: string }).field
     );
   }
   return json as T;
@@ -170,4 +171,26 @@ export async function apiDeletePromotion(
     `/api/restaurants/${restaurantId}/promotions/${promotionId}`,
     "DELETE"
   );
+}
+
+export async function apiMoveCategory(
+  accessToken: string,
+  restaurantId: string,
+  categoryId: string,
+  direction: "up" | "down"
+): Promise<PublicMenu> {
+  return mutate(accessToken, `/api/restaurants/${restaurantId}/menu/categories/${categoryId}/move`, "POST", {
+    direction,
+  });
+}
+
+export async function apiMoveItem(
+  accessToken: string,
+  restaurantId: string,
+  itemId: string,
+  direction: "up" | "down"
+): Promise<PublicMenu> {
+  return mutate(accessToken, `/api/restaurants/${restaurantId}/menu/items/${itemId}/move`, "POST", {
+    direction,
+  });
 }

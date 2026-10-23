@@ -36,13 +36,16 @@ export type RestaurantErrorCode = keyof typeof RESTAURANT_ERROR_CODES;
 export class RestaurantError extends Error {
   readonly code: RestaurantErrorCode;
   readonly httpStatus: number;
+  /** Name of the request field at fault, so a form can show the message under it. */
+  readonly field?: string;
 
-  constructor(code: RestaurantErrorCode, detailOverride?: string) {
+  constructor(code: RestaurantErrorCode, detailOverride?: string, field?: string) {
     const entry = RESTAURANT_ERROR_CODES[code];
     super(detailOverride ?? entry.message);
     this.name = "RestaurantError";
     this.code = code;
     this.httpStatus = entry.status;
+    this.field = field;
   }
 }
 
@@ -50,7 +53,7 @@ export function toRestaurantErrorResponse(err: unknown): Response {
   if (err instanceof AuthError) return toErrorResponse(err);
   if (err instanceof RestaurantError) {
     return Response.json(
-      { ok: false, code: err.code, message: err.message },
+      { ok: false, code: err.code, message: err.message, ...(err.field ? { field: err.field } : {}) },
       { status: err.httpStatus }
     );
   }

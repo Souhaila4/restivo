@@ -7,7 +7,8 @@ export type PublicMenuItem = {
   name: string;
   description: string | null;
   imageUrl: string | null;
-  price: number;
+  /** Exact decimal string with the currency decimals, e.g. "18.500". */
+  price: string;
   isAvailable: boolean;
   isFeatured: boolean;
   sortOrder: number;
@@ -45,6 +46,7 @@ export type PublicMenu = {
   name: string;
   description: string | null;
   isPublished: boolean;
+  currency: string;
   categories: PublicMenuCategory[];
   promotions: PublicPromotion[];
 };

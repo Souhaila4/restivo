@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, Plus, Upload } from "lucide-react";
+import { Eye, Plus } from "lucide-react";
 
 export function MenuHeader({
   title,
@@ -9,7 +9,7 @@ export function MenuHeader({
   canAddItem,
   onAddItem,
   onPreview,
-  onPublish,
+  onTogglePublish,
 }: {
   title: string;
   isPublished: boolean;
@@ -17,7 +17,8 @@ export function MenuHeader({
   canAddItem: boolean;
   onAddItem: () => void;
   onPreview: () => void;
-  onPublish: () => void;
+  /** Publishes a draft or unpublishes a published menu. */
+  onTogglePublish: () => void;
 }) {
   return (
     <section className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-2">
@@ -67,12 +68,26 @@ export function MenuHeader({
         </button>
         <button
           type="button"
-          onClick={onPublish}
-          disabled={isSaving || isPublished}
-          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#B55234] hover:bg-[#9E4328] text-white text-sm font-bold transition-colors shadow-sm disabled:opacity-50"
+          role="switch"
+          aria-checked={isPublished}
+          aria-label={isPublished ? "Unpublish menu" : "Publish menu"}
+          onClick={onTogglePublish}
+          disabled={isSaving}
+          className="inline-flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-white border border-[#E8E2D7] text-sm font-semibold text-[#1A1A1A] hover:bg-[#FAF7F2] transition-colors shadow-sm disabled:opacity-50"
         >
-          <Upload className="w-4 h-4" />
-          {isPublished ? "Published" : "Publish menu"}
+          <span
+            className={`relative w-10 h-[22px] rounded-full transition-colors duration-200 ${
+              isPublished ? "bg-emerald-500" : "bg-[#D4CFC6]"
+            }`}
+          >
+            <span
+              className={`absolute top-[2px] left-[2px] w-[18px] h-[18px] rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                isPublished ? "translate-x-[18px]" : "translate-x-0"
+              }`}
+            />
+          </span>
+          {isPublished ? "Published" : "Draft"}
+          <span className="text-xs font-medium text-[#736D65]">{isPublished ? "- Unpublish" : "- Publish"}</span>
         </button>
       </div>
     </section>

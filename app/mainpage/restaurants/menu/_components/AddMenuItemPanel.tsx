@@ -8,10 +8,12 @@ import { FORM_INPUT_CLASS } from "../_lib/menu-ui";
 function FormField({
   label,
   required,
+  error,
   children,
 }: {
   label: string;
   required?: boolean;
+  error?: string | null;
   children: React.ReactNode;
 }) {
   return (
@@ -21,6 +23,7 @@ function FormField({
         {required && <span className="text-[#B55234] ml-0.5">*</span>}
       </label>
       {children}
+      {error && <p className="mt-1 text-xs font-medium text-red-600">{error}</p>}
     </div>
   );
 }
@@ -56,6 +59,7 @@ export function AddMenuItemPanel({
   categories,
   currency,
   saving,
+  serverError,
   onSave,
   onClose,
 }: {
@@ -63,12 +67,14 @@ export function AddMenuItemPanel({
   categories: PublicMenuCategory[];
   currency: string;
   saving?: boolean;
+  /** Last server error; shown under the field it names. */
+  serverError: { field: string | null; message: string } | null;
   onSave: (input: {
     categoryId: string;
     name: string;
     description?: string;
     imageUrl?: string;
-    price: number;
+    price: string;
     isAvailable: boolean;
     isFeatured: boolean;
   }) => void;
@@ -77,10 +83,33 @@ export function AddMenuItemPanel({
   const [name, setName] = useState(editingItem?.name ?? "");
   const [categoryId, setCategoryId] = useState(editingItem?.categoryId ?? categories[0]?.id ?? "");
   const [description, setDescription] = useState(editingItem?.description ?? "");
-  const [price, setPrice] = useState(editingItem?.price?.toString() ?? "");
+  const [price, setPrice] = useState(editingItem?.price ?? "");
   const [isAvailable, setIsAvailable] = useState(editingItem?.isAvailable ?? true);
   const [isFeatured, setIsFeatured] = useState(editingItem?.isFeatured ?? false);
   const [imageUrl, setImageUrl] = useState(editingItem?.imageUrl ?? "");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // A local message wins; otherwise show the server's message under the field it names.
+  const errorFor = (field: string) =>
+    errors[field] ?? (serverError?.field === field && Object.keys(errors).length === 0 ? serverError.message : null);
+  const clearError = (field: string) =>
+    setErrors((prev) => {
+      if (!(field in prev)) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+
+  function validate(): Record<string, string> {
+    const found: Record<string, string> = {};
+    if (name.trim().length < 2) found.name = "Item name must have at least 2 characters.";
+    if (!categoryId) found.categoryId = "Choose a category.";
+    if (!/^\d+([.,]\d+)?$/.test(price.trim())) found.price = "Enter a price such as 18.500.";
+    if (imageUrl.trim() && !/^https?:\/\//i.test(imageUrl.trim())) {
+      found.imageUrl = "The image link must start with http:// or https://.";
+    }
+    return found;
+  }
 
   return (
     <div className="lg:w-[320px] xl:w-[340px] shrink-0 border-l border-[#E8E2D7] bg-white ml-0 lg:ml-4 mt-4 lg:mt-0 rounded-xl lg:rounded-none lg:rounded-r-xl p-5 animate-in slide-in-from-right-4 duration-300 overflow-y-auto max-h-[calc(100vh-200px)]">
@@ -98,21 +127,27 @@ export function AddMenuItemPanel({
       </div>
 
       <div className="flex flex-col gap-4">
-        <FormField label="Item name" required>
+        <FormField label="Item name" required error={errorFor("name")}>
           <input
             type="text"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              setName(e.target.value);
+              clearError("name");
+            }}
             placeholder="e.g. Truffle Pasta"
             className={FORM_INPUT_CLASS}
           />
         </FormField>
 
-        <FormField label="Category" required>
+        <FormField label="Category" required error={errorFor("categoryId")}>
           <div className="relative">
             <select
               value={categoryId}
-              onChange={(e) => setCategoryId(e.target.value)}
+              onChange={(e) => {
+                setCategoryId(e.target.value);
+                clearError("categoryId");
+              }}
               className={`${FORM_INPUT_CLASS} appearance-none pr-8 cursor-pointer`}
             >
               <option value="">Select category</option>
@@ -126,7 +161,7 @@ export function AddMenuItemPanel({
           </div>
         </FormField>
 
-        <FormField label="Description">
+        <FormField label="Description" error={errorFor("description")}>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -136,25 +171,31 @@ export function AddMenuItemPanel({
           />
         </FormField>
 
-        <FormField label="Image URL">
+        <FormField label="Image URL" error={errorFor("imageUrl")}>
           <input
-            type="url"
+            type="text"
+            inputMode="url"
             value={imageUrl}
-            onChange={(e) => setImageUrl(e.target.value)}
+            onChange={(e) => {
+              setImageUrl(e.target.value);
+              clearError("imageUrl");
+            }}
             placeholder="https://…"
             className={FORM_INPUT_CLASS}
           />
         </FormField>
 
-        <FormField label="Price" required>
+        <FormField label="Price" required error={errorFor("price")}>
           <div className="relative">
             <input
-              type="number"
+              type="text"
+              inputMode="decimal"
               value={price}
-              onChange={(e) => setPrice(e.target.value)}
-              placeholder="0.00"
-              min="0"
-              step="0.01"
+              onChange={(e) => {
+                setPrice(e.target.value);
+                clearError("price");
+              }}
+              placeholder="0.000"
               className={`${FORM_INPUT_CLASS} pr-14`}
             />
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[#A39C91]">
@@ -180,18 +221,21 @@ export function AddMenuItemPanel({
       <div className="flex flex-col gap-2 mt-6">
         <button
           type="button"
-          onClick={() =>
+          onClick={() => {
+            const found = validate();
+            setErrors(found);
+            if (Object.keys(found).length > 0) return;
             onSave({
               categoryId,
               name: name.trim(),
               description: description.trim() || undefined,
               imageUrl: imageUrl.trim() || undefined,
-              price: parseFloat(price) || 0,
+              price: price.trim(),
               isAvailable,
               isFeatured,
-            })
-          }
-          disabled={saving || !name.trim() || !categoryId || !price}
+            });
+          }}
+          disabled={saving}
           className="w-full py-2.5 rounded-xl bg-[#B55234] hover:bg-[#9E4328] disabled:bg-[#D4CFC6] disabled:cursor-not-allowed text-white text-sm font-bold transition-colors"
         >
           {saving ? "Saving…" : editingItem ? "Update item" : "Save item"}

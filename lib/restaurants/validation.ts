@@ -105,7 +105,8 @@ export async function parseRestaurantBody<T>(
     const firstIssue = result.error.issues[0];
     throw new RestaurantError(
       "VALIDATION_ERROR",
-      firstIssue?.message ?? "Invalid request data."
+      firstIssue?.message ?? "Invalid request data.",
+      typeof firstIssue?.path[0] === "string" ? firstIssue.path[0] : undefined
     );
   }
 

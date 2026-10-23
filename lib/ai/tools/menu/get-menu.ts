@@ -31,7 +31,7 @@ async function readMenu(restaurantId: string, args: ListArgs) {
       .map((category) => {
         const items = category.items.slice(0, left).map((item) => ({
           name: item.name,
-          price: item.price,
+          price: Number(item.price),
           available: item.isAvailable,
           featured: item.isFeatured,
           promotion: item.promotionLabel,

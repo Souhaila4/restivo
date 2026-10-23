@@ -11,6 +11,8 @@ import type {
   UpdateMenuBody,
   UpdatePromotionBody,
 } from "./validation";
+import { formatPrice, normalizePrice } from "@/lib/orders/pricing";
+import { moveRow, type Direction } from "./reorder";
 import type {
   PublicMenu,
   PublicMenuCategory,
@@ -65,6 +67,18 @@ function promotionLabel(row: {
   return row.type === "PERCENTAGE" ? `${value}% OFF` : `${value} OFF`;
 }
 
+async function restaurantCurrency(restaurantId: string): Promise<string> {
+  const restaurant = await db.orm.public.Restaurant.where({ id: restaurantId }).first();
+  return restaurant?.currency ?? "TND";
+}
+
+/** Exact price string for the restaurant currency, or a 422 naming the price field. */
+async function validPrice(restaurantId: string, price: string | number): Promise<string> {
+  const result = normalizePrice(price, await restaurantCurrency(restaurantId));
+  if (!result.ok) throw new RestaurantError("VALIDATION_ERROR", result.message, "price");
+  return result.value;
+}
+
 async function getPrimaryMenu(restaurantId: string) {
   const menus = await db.orm.public.Menu.where({ restaurantId }).all();
   return menus[0] ?? null;
@@ -116,7 +130,8 @@ export async function getMenuTree(restaurantId: string): Promise<PublicMenu | nu
   const menu = await getPrimaryMenu(restaurantId);
   if (!menu) return null;
 
-  const [categories, promotions] = await Promise.all([
+  const [currency, categories, promotions] = await Promise.all([
+    restaurantCurrency(restaurantId),
     db.orm.public.MenuCategory.where({ menuId: menu.id }).all(),
     db.orm.public.Promotion.where({ restaurantId }).all(),
   ]);
@@ -171,7 +186,7 @@ export async function getMenuTree(restaurantId: string): Promise<PublicMenu | nu
       name: item.name,
       description: item.description,
       imageUrl: item.imageUrl,
-      price: toNumber(item.price),
+      price: formatPrice(String(item.price), currency),
       isAvailable: item.isAvailable,
       isFeatured: item.isFeatured,
       sortOrder: item.sortOrder,
@@ -197,6 +212,7 @@ export async function getMenuTree(restaurantId: string): Promise<PublicMenu | nu
     name: menu.name,
     description: menu.description,
     isPublished: menu.isPublished,
+    currency,
     categories: publicCategories,
     promotions: publicPromotions.sort((a, b) => a.name.localeCompare(b.name)),
   };
@@ -302,6 +318,66 @@ export async function deleteCategory(
   return tree;
 }
 
+/** Moves a category one step up or down in one transaction. At the edge nothing changes. */
+export async function moveCategory(
+  userId: string,
+  restaurantId: string,
+  categoryId: string,
+  direction: Direction
+): Promise<PublicMenu> {
+  const menu = await requirePrimaryMenu(restaurantId);
+  await requireCategoryOnMenu(categoryId, menu.id);
+  await db.transaction(async (tx) => {
+    const siblings = await tx.orm.public.MenuCategory.where({ menuId: menu.id }).all();
+    const changes = moveRow(siblings, categoryId, direction);
+    if (!changes) return;
+    for (const change of changes) {
+      await tx.orm.public.MenuCategory.where({ id: change.id }).update({ sortOrder: change.sortOrder });
+    }
+    await tx.orm.public.AuditLog.create({
+      userId,
+      restaurantId,
+      action: "UPDATE",
+      entityType: "MenuCategory",
+      entityId: categoryId,
+      metadata: { move: direction },
+    });
+  });
+  const tree = await getMenuTree(restaurantId);
+  if (!tree) throw new RestaurantError("INTERNAL_ERROR");
+  return tree;
+}
+
+/** Moves a dish one step up or down inside its category, in one transaction. */
+export async function moveItem(
+  userId: string,
+  restaurantId: string,
+  itemId: string,
+  direction: Direction
+): Promise<PublicMenu> {
+  const menu = await requirePrimaryMenu(restaurantId);
+  const { item } = await requireItemOnMenu(itemId, menu.id);
+  await db.transaction(async (tx) => {
+    const siblings = await tx.orm.public.MenuItem.where({ categoryId: item.categoryId }).all();
+    const changes = moveRow(siblings, itemId, direction);
+    if (!changes) return;
+    for (const change of changes) {
+      await tx.orm.public.MenuItem.where({ id: change.id }).update({ sortOrder: change.sortOrder });
+    }
+    await tx.orm.public.AuditLog.create({
+      userId,
+      restaurantId,
+      action: "UPDATE",
+      entityType: "MenuItem",
+      entityId: itemId,
+      metadata: { move: direction },
+    });
+  });
+  const tree = await getMenuTree(restaurantId);
+  if (!tree) throw new RestaurantError("INTERNAL_ERROR");
+  return tree;
+}
+
 export async function createItem(
   userId: string,
   restaurantId: string,
@@ -315,7 +391,7 @@ export async function createItem(
     name: input.name,
     description: input.description ?? null,
     imageUrl: input.imageUrl ?? null,
-    price: String(input.price),
+    price: await validPrice(restaurantId, input.price),
     preparationTime: input.preparationTime ?? null,
     isAvailable: input.isAvailable ?? true,
     isFeatured: input.isFeatured ?? false,
@@ -337,12 +413,15 @@ export async function updateItem(
   await requireItemOnMenu(itemId, menu.id);
   if (input.categoryId) await requireCategoryOnMenu(input.categoryId, menu.id);
 
+  const price = input.price !== undefined ? await validPrice(restaurantId, input.price) : undefined;
+
   await db.orm.public.MenuItem.where({ id: itemId }).update({
+    ...(price !== undefined ? { price } : {}),
     ...(input.categoryId !== undefined ? { categoryId: input.categoryId } : {}),
     ...(input.name !== undefined ? { name: input.name } : {}),
     ...(input.description !== undefined ? { description: input.description ?? null } : {}),
     ...(input.imageUrl !== undefined ? { imageUrl: input.imageUrl ?? null } : {}),
-    ...(input.price !== undefined ? { price: String(input.price) } : {}),
+
     ...(input.preparationTime !== undefined ? { preparationTime: input.preparationTime } : {}),
     ...(input.isAvailable !== undefined ? { isAvailable: input.isAvailable } : {}),
     ...(input.isFeatured !== undefined ? { isFeatured: input.isFeatured } : {}),
@@ -395,7 +474,7 @@ export async function createPromotion(
   const startsAt = parseInstant(input.startsAt);
   const endsAt = parseInstant(input.endsAt);
   if (Temporal.Instant.compare(endsAt, startsAt) <= 0) {
-    throw new RestaurantError("VALIDATION_ERROR", "End date must be after the start date.");
+    throw new RestaurantError("VALIDATION_ERROR", "End date must be after the start date.", "endsAt");
   }
 
   const created = await db.orm.public.Promotion.create({
@@ -431,7 +510,7 @@ export async function updatePromotion(
   const startsAt = input.startsAt ? parseInstant(input.startsAt) : promotion.startsAt;
   const endsAt = input.endsAt ? parseInstant(input.endsAt) : promotion.endsAt;
   if (Temporal.Instant.compare(endsAt as Temporal.Instant, startsAt as Temporal.Instant) <= 0) {
-    throw new RestaurantError("VALIDATION_ERROR", "End date must be after the start date.");
+    throw new RestaurantError("VALIDATION_ERROR", "End date must be after the start date.", "endsAt");
   }
 
   await db.orm.public.Promotion.where({ id: promotionId }).update({

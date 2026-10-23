@@ -177,7 +177,7 @@ export function MenuFilterBar({
 
       <div className="flex items-center gap-1 text-xs text-[#736D65] ml-auto">
         <span className="font-medium">Sort:</span>
-        {(["featured", "price", "name"] as const).map((key) => (
+        {(["featured", "price", "name", "order"] as const).map((key) => (
           <button
             key={key}
             type="button"

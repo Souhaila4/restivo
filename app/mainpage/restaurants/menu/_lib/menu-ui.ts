@@ -9,7 +9,7 @@ export type MenuTab = (typeof MENU_TABS)[number];
 
 export type FilterKey = "category" | "availability" | "promotion" | "price";
 
-export type SortKey = "featured" | "price" | "name";
+export type SortKey = "featured" | "price" | "name" | "order";
 
 export const STATUS_STYLES = {
   available: { dot: "bg-emerald-500", text: "text-emerald-700", label: "Available" },

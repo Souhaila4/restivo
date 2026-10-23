@@ -65,10 +65,10 @@ Le contexte géographique visé semble être la **Tunisie** : devise par défaut
 | Assistant IA du gérant (lecture seule, via Groq) | ✅ Fonctionnelle (clé API requise) | `/api/restaurants/:id/ai`, `lib/ai/*` |
 | Journal d'audit des actions | ✅ Écrit côté serveur, ❌ aucune interface de consultation | Table `AuditLog` |
 | Modification de la fiche restaurant après création | ⚠️ Locale uniquement (pas d'endpoint `PATCH`) | `RestaurantProfileModal.tsx` |
-| Espace client (accueil, recherche, réservation, vue 3D) | ⚠️ Maquette avec données statiques | `app/mainpage/_data/restaurants.ts` |
+| Espace client (accueil, recherche, plan en lecture seule, réservation, précommande, menu en livre) | ✅ Fonctionnelle (V1, voir §9) | `/api/discover/*`, `/api/reservations/*`, `/api/orders`, `app/mainpage/{explore,reservations,orders}` |
 | Tableau de bord gérant (commandes en direct, réservations, activité) | ⚠️ Widgets avec données statiques | `restaurants/_components/*Widget.tsx` |
 | Tableau de service du personnel (commandes) | ⚠️ Données statiques en mémoire | `staff/_lib/board.ts` |
-| Pages Réservations, Commandes, Favoris, Explorer | ⏳ Pages « bientôt disponible » | `app/mainpage/{reservations,orders,favorites,explore}` |
+| Favoris et notifications du client | ⏳ Pas d'implémentation (page Favoris vide) | `app/mainpage/favorites` |
 | Connexion Google / Apple | ⏳ Boutons factices (`console.log`) | `SocialAuthButtons.tsx` |
 | Mode hors ligne (PWA) | ✅ Service Worker Serwist | `app/sw.ts`, `next.config.ts` |
 
@@ -153,6 +153,9 @@ restivo-V1-main/
 │   │   │       ├── promotions/  # CRUD promotions
 │   │   │       ├── staff/       # équipe + requests/[requestId] (accepter/refuser)
 │   │   │       └── ai/          # chat avec l'assistant IA
+│   │   ├── discover/restaurants/ # côté client : liste, fiche, disponibilités, menu publié
+│   │   ├── reservations/        # créer, lister, annuler, et /checkout (réservation + précommande)
+│   │   ├── orders/              # précommandes du client (POST, GET)
 │   │   ├── staff/join/          # côté employé : tableau d'adhésion + envoi de demande
 │   │   └── time/                # renvoie l'heure serveur (utilitaire)
 │   │
@@ -161,11 +164,14 @@ restivo-V1-main/
 │   │
 │   └── mainpage/                # ── APPLICATION CONNECTÉE ──
 │       ├── layout.tsx           # Shell persistant (sidebar + topnav selon la section)
-│       ├── page.tsx             # Accueil client (données de démonstration)
-│       ├── _components/         # Composants client : cartes resto, modales, sidebar…
-│       ├── _data/restaurants.ts # ⚠️ Données statiques de démonstration
+│       ├── page.tsx             # Accueil client (restaurants publiés, via /api/discover)
+│       ├── _components/         # Composants client : cartes resto, réservation, plan, sidebar…
+│       │   └── book/            # Livre du menu : MenuBook, MenuBookDialog, pages, useMediaQuery
 │       ├── profile/             # Profil utilisateur (connecté à l'API)
-│       ├── explore|orders|favorites|reservations/  # Pages vides « à venir »
+│       ├── explore/             # Recherche + fiche restaurant [restaurantId] (réservation, menu)
+│       ├── reservations/        # Mes réservations, annulation, « Pre-order meals »
+│       ├── orders/              # Mes précommandes
+│       ├── favorites/           # Page vide « à venir »
 │       │
 │       ├── restaurants/         # Espace PROPRIÉTAIRE / GÉRANT
 │       │   ├── page.tsx         # Tableau de bord (stats + widgets)
@@ -191,7 +197,12 @@ restivo-V1-main/
 │   ├── auth/                    # JWT, cookies, mots de passe, rôles, erreurs, validation
 │   ├── restaurants/             # Accès, service, slug, sérialisation, erreurs
 │   ├── floors/                  # Service étages/plan, conversion éditeur ⇄ BDD
-│   ├── menu/                    # Service menu/catégories/plats/promotions
+│   ├── menu/                    # Service menu/catégories/plats/promotions, ordre (reorder.ts), aperçu (preview-view.ts)
+│   ├── menu-book/               # Pagination pure du livre (paginate.ts, testée)
+│   ├── discover/                # Recherche et fiche publiques des restaurants
+│   ├── reservations/            # Créneaux, règles, réservation, checkout unique, annulation
+│   ├── orders/                  # Précommandes, prix en entiers (pricing.ts), panier, menu commandable
+│   ├── locks.ts                 # Verrous consultatifs PostgreSQL (par transaction)
 │   ├── staff/                   # Demandes d'adhésion, roster (équipe)
 │   └── ai/                      # Boucle d'outils LLM, prompt, outils, suggestions
 │       └── tools/               # Registre sécurisé + outils get_restaurant/floors/menu/staff
@@ -646,12 +657,13 @@ Il n'y a pas de Prettier configuré, pas de hook Git (Husky) et pas de pipeline 
 5. **Rôle MANAGER** : prévu dans le modèle, mais aucun parcours ne permet de nommer un gérant. Seuls OWNER (à la création) et STAFF (par adhésion) sont attribués.
 6. **OAuth Google / Apple** : boutons factices.
 7. **Historique du chat IA** : non persisté.
+8. **Menu côté gérant** : réordonnancement par boutons ↑ ↓ uniquement (pas de glisser-déposer), pas d'étiquettes (végétarien, épicé…), images de plats par URL. Le réglage « Published » du panneau *Menu settings* publie sans l'avertissement de menu vide de l'en-tête, et le formulaire de promotion se vide même quand le serveur refuse la saisie.
 
 ### Dette technique
 
 - **Restaurant de démonstration** (`FALLBACK_RESTAURANTS`, id `"maison-olive"`) : il s'affiche quand un gérant n'a aucun restaurant ou en cas d'erreur API. Les appels API qui suivent ciblent alors un identifiant inexistant (404), et l'écran « Create a restaurant first » de la page IA ne peut pas apparaître.
 - **Requêtes N+1** : `listManagedRestaurants`, `loadRoster` (un `Profile` par personne), `getMenuTree` (une requête par catégorie) et `replaceLayout` (suppressions et créations une par une, jusqu'à 400 objets) feront beaucoup d'allers-retours avec la base quand le volume augmentera. Des requêtes groupées (`IN`, `createMany`) seraient préférables.
-- **Opérations non atomiques** : `reorderFloor` (deux `update` hors transaction), `createFloor` (calcul de `level`/`sortOrder` par comptage, sujet aux conditions de course) et `writeAudit` (hors de la transaction métier dans `floors` et `menu`).
+- **Opérations non atomiques** : `reorderFloor` (deux `update` hors transaction, alors que le réordonnancement des catégories et plats du menu est, lui, transactionnel), `createFloor` (calcul de `level`/`sortOrder` par comptage, sujet aux conditions de course) et `writeAudit` (hors de la transaction métier dans `floors` et `menu`).
 - **Couplage `lib` → `app`** : `lib/floors/*` et `lib/ai/tools/floors` importent des types et constantes depuis `app/mainpage/restaurants/tables/_components/floor-plan/`. Le domaine dépend donc de l'UI : `floor-object.ts` et `constants.ts` seraient mieux placés dans `lib/floors/`.
 - **Duplication** : `handleResponse` est recopié dans chaque `client.ts`, et `parse*Body` dans plusieurs fichiers de validation. Un petit utilitaire `lib/http` les factoriserait.
 - **Migrations désynchronisées** : le contrat courant (`6f4f5f…`) n'a pas de migration correspondante (voir §5).
@@ -696,10 +708,17 @@ Le parcours client est réel, de bout en bout : le gérant crée son restaurant 
 | Lister les restaurants publiés | `/mainpage`, `/mainpage/explore` (recherche par nom ou ville) | `GET /api/discover/restaurants?q=` |
 | Voir un restaurant, son plan en lecture seule, ses horaires | `/mainpage/explore/[restaurantId]` | `GET /api/discover/restaurants/:id` |
 | Voir les tables libres d'un créneau | idem (formulaire date, heure, invités) | `GET /api/discover/restaurants/:id/availability?date=&time=&guests=` |
-| Réserver, annuler | idem, puis `/mainpage/reservations` | `POST /api/reservations`, `GET /api/reservations`, `POST /api/reservations/:id/cancel` |
+| Réserver (avec ou sans plats), annuler | idem, puis `/mainpage/reservations` | `POST /api/reservations/checkout` (réservation + précommande), `POST /api/reservations`, `GET /api/reservations`, `POST /api/reservations/:id/cancel` |
 | Voir le menu et précommander | idem (section *Menu*), puis `/mainpage/orders` | `GET /api/discover/restaurants/:id/menu`, `POST` et `GET /api/orders` |
 
 Toutes ces routes exigent un compte `ACTIVE` (Bearer) : l'identité vient toujours du JWT. Les pages client redirigent vers `/auth/signin` si la session est absente (`useRequireSignIn`).
+
+### Le menu en livre et la confirmation unique
+
+- **Livre** : le menu s'affiche dans `MenuBook` (`app/mainpage/_components/book/`) : couverture, sommaire, un chapitre par catégorie, puis les plats. Deux pages côte à côte sur grand écran, une seule sur mobile ; le tour de page est en CSS 3D, sans bibliothèque, et instantané si le visiteur préfère réduire les animations. La pagination est un module pur testé (`lib/menu-book/paginate.ts`), qui mémorise la position de lecture par ancre pour survivre à un redimensionnement. `MenuBookDialog` l'affiche en plein écran, avec « View as list » (`MenuList`) et fermeture par Échap. Trois modes : `browse` (lecture), `order` (boutons − / +), `manager-preview` (lecture, vue du gérant).
+- **Entrées** : « Open the menu » (consultation sans réservation) sur la fiche restaurant ; « Explore the menu » dans `BookingPanel` après le choix d'une table (mode `order`) ; « Pre-order meals » dans `/mainpage/reservations` (lien `?preorder=<reservationId>`, réservation à venir du client) ; « Preview menu » côté gérant (`lib/menu/preview-view.ts` convertit le menu du gérant, brouillon compris, avec les promotions en cours). L'ancien panneau de précommande `MenuOrderPanel` n'existe plus.
+- **Confirmation unique** : le parcours se termine par une seule étape de revue, puis un seul appel `POST /api/reservations/checkout` (`lib/reservations/checkout.ts`). La réservation et la précommande sont créées dans la même transaction, avec le même verrou de table : si un plat est refusé ou si le créneau est pris, rien n'est enregistré. Sans plat choisi, l'appel ne crée que la réservation. `POST /api/reservations` seul reste disponible.
+- **Côté gérant** : les prix des plats sont des chaînes décimales (`"18.500"`) validées selon les décimales de la devise du restaurant (`normalizePrice`, `lib/orders/pricing.ts`) ; l'API accepte encore un nombre. Catégories et plats se réordonnent par `POST …/categories/:id/move` et `POST …/items/:id/move` (`{direction: "up"|"down"}`), en transaction avec journal d'audit. L'interrupteur Published/Draft de l'en-tête publie ou dépublie le menu ; publier sans plat disponible demande une confirmation dans la page.
 
 ### Règles métier
 

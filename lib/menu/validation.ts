@@ -20,6 +20,15 @@ export const updateMenuSchema = z.object({
   isPublished: z.boolean().optional(),
 });
 
+/** A decimal string ("18.500"); numbers from older callers are still accepted. The currency check is in the service. */
+const priceInput = z.union([z.string().trim().min(1, "Price is required."), z.number()], {
+  error: "Enter a price such as 18.500.",
+});
+
+export const reorderSchema = z.object({
+  direction: z.enum(["up", "down"], { error: "Direction must be up or down." }),
+});
+
 export const createCategorySchema = z.object({
   name: z.string().trim().min(2, "Category name is required.").max(60),
   description: optionalText(240),
@@ -38,7 +47,7 @@ export const createItemSchema = z.object({
   name: z.string().trim().min(2, "Item name is required.").max(80),
   description: optionalText(600),
   imageUrl: optionalText(400),
-  price: z.number().min(0, "Price cannot be negative.").max(100000),
+  price: priceInput,
   preparationTime: z.number().int().min(0).max(240).optional(),
   isAvailable: z.boolean().optional(),
   isFeatured: z.boolean().optional(),
@@ -49,7 +58,7 @@ export const updateItemSchema = z.object({
   name: z.string().trim().min(2).max(80).optional(),
   description: optionalText(600),
   imageUrl: optionalText(400),
-  price: z.number().min(0).max(100000).optional(),
+  price: priceInput.optional(),
   preparationTime: z.number().int().min(0).max(240).nullable().optional(),
   isAvailable: z.boolean().optional(),
   isFeatured: z.boolean().optional(),
@@ -100,6 +109,7 @@ export type UpdateItemInput = z.input<typeof updateItemSchema>;
 export type CreatePromotionInput = z.input<typeof createPromotionSchema>;
 export type UpdatePromotionInput = z.input<typeof updatePromotionSchema>;
 
+export type ReorderBody = z.output<typeof reorderSchema>;
 export type CreateMenuBody = z.output<typeof createMenuSchema>;
 export type UpdateMenuBody = z.output<typeof updateMenuSchema>;
 export type CreateCategoryBody = z.output<typeof createCategorySchema>;

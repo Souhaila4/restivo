@@ -60,12 +60,15 @@ export interface AuthResult {
 export class ApiError extends Error {
   readonly code: string;
   readonly status: number;
+  /** Request field the server blames, when it names one. */
+  readonly field?: string;
 
-  constructor(code: string, message: string, status: number) {
+  constructor(code: string, message: string, status: number, field?: string) {
     super(message);
     this.name = "ApiError";
     this.code = code;
     this.status = status;
+    this.field = field;
   }
 }
 

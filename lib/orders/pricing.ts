@@ -114,3 +114,49 @@ export function computeTotals(lines: PricedLine[]): OrderTotals {
   }
   return { subtotal, discount, total: subtotal - discount };
 }
+
+// ---- Dish price validation (manager side) ----
+// Accepts "18.5" or, for older callers, the number 18.5; returns "18.500" for TND.
+
+export const MAX_PRICE_MINOR_DIGITS = 8;
+
+export type PriceResult = { ok: true; value: string } | { ok: false; message: string };
+
+/** Plain decimal text of a number without exponent, e.g. 1e-7 never reaches the parser. */
+function numberToText(value: number): string | null {
+  if (!Number.isFinite(value)) return null;
+  const text = String(value);
+  return /^\d+(\.\d+)?$/.test(text) ? text : null;
+}
+
+/** Validates a price against the currency decimals and returns it padded, e.g. "18.500". */
+export function normalizePrice(input: string | number, currency: string): PriceResult {
+  const decimals = currencyDecimals(currency);
+  const text = typeof input === "number" ? numberToText(input) : input.trim().replace(",", ".");
+  if (text === null || !/^\d+(\.\d+)?$/.test(text)) {
+    return { ok: false, message: "Enter a price such as 18.500." };
+  }
+  const fraction = text.split(".")[1] ?? "";
+  if (fraction.length > decimals) {
+    return {
+      ok: false,
+      message: decimals === 0 ? "This currency has no decimals." : `Use at most ${decimals} decimals.`,
+    };
+  }
+  const minor = parseDecimal(text, decimals);
+  if (minor.toString().length > MAX_PRICE_MINOR_DIGITS) {
+    return { ok: false, message: "Price is too high." };
+  }
+  return { ok: true, value: formatMinor(minor, decimals) };
+}
+
+/** Pads a stored decimal for display ("18.5" -> "18.500"). Falls back to the raw text. */
+export function formatPrice(value: string, currency: string): string {
+  const result = normalizePrice(value, currency);
+  return result.ok ? result.value : value;
+}
+
+/** Price as integer minor units, for filters and sorting. */
+export function priceMinor(value: string, currency: string): bigint {
+  return parseDecimal(value, currencyDecimals(currency));
+}

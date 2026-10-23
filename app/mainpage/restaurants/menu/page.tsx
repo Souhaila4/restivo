@@ -6,6 +6,7 @@ import { Store } from "lucide-react";
 import { ApiError, useAuth } from "@/contexts/AuthContext";
 import { useRestaurantManager } from "../_context/RestaurantManagerContext";
 import type { PublicMenu, PublicMenuItem } from "@/lib/menu/types";
+import { priceMinor } from "@/lib/orders/pricing";
 import {
   apiCreateCategory,
   apiCreateItem,
@@ -15,9 +16,12 @@ import {
   apiDeleteItem,
   apiDeletePromotion,
   apiGetMenu,
+  apiMoveCategory,
+  apiMoveItem,
   apiUpdateCategory,
   apiUpdateItem,
   apiUpdateMenu,
+  apiUpdatePromotion,
 } from "@/lib/menu/client";
 import type { FilterKey, MenuTab, SortKey } from "./_lib/menu-ui";
 import { MenuHeader } from "./_components/MenuHeader";
@@ -29,7 +33,8 @@ import { AddMenuItemPanel } from "./_components/AddMenuItemPanel";
 import { CategoriesManager } from "./_components/CategoriesManager";
 import { PromotionsPanel } from "./_components/PromotionsPanel";
 import { MenuSettingsPanel } from "./_components/MenuSettingsPanel";
-import { MenuPreview } from "./_components/MenuPreview";
+import { MenuBookDialog } from "@/app/mainpage/_components/book/MenuBookDialog";
+import { previewBookMenu } from "@/lib/menu/preview-view";
 
 export default function MenuPage() {
   const router = useRouter();
@@ -41,6 +46,9 @@ export default function MenuPage() {
   const [loadingMenu, setLoadingMenu] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Request field the server blames for `error`, so forms can show it under that field.
+  const [errorField, setErrorField] = useState<string | null>(null);
+  const [emptyPublishAsk, setEmptyPublishAsk] = useState(false);
   const [activeTab, setActiveTab] = useState<MenuTab>("Items");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -71,11 +79,13 @@ export default function MenuPage() {
       }
       setSaving(true);
       setError(null);
+      setErrorField(null);
       try {
         const next = await operation(token);
         setMenu(next);
       } catch (err) {
         setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
+        setErrorField(err instanceof ApiError ? (err.field ?? null) : null);
       } finally {
         setSaving(false);
       }
@@ -122,6 +132,11 @@ export default function MenuPage() {
     [menu]
   );
 
+  const hasAvailableDish = useMemo(
+    () => (menu?.categories ?? []).some((category) => category.isActive && category.items.some((item) => item.isAvailable)),
+    [menu]
+  );
+
   const filteredItems = useMemo(() => {
     let result = [...allItems];
 
@@ -151,20 +166,27 @@ export default function MenuPage() {
       result = result.filter((item) => !item.promotionLabel);
     }
 
-    if (filterPrice === "under-15") result = result.filter((item) => item.price < 15);
+    // Prices are exact decimal strings; compare them as integer minor units.
+    const minor = (price: string) => priceMinor(price, currency);
+    const [t15, t30, t50] = [minor("15"), minor("30"), minor("50")];
+    if (filterPrice === "under-15") result = result.filter((item) => minor(item.price) < t15);
     else if (filterPrice === "15-30") {
-      result = result.filter((item) => item.price >= 15 && item.price <= 30);
+      result = result.filter((item) => minor(item.price) >= t15 && minor(item.price) <= t30);
     } else if (filterPrice === "30-50") {
-      result = result.filter((item) => item.price > 30 && item.price <= 50);
-    } else if (filterPrice === "over-50") result = result.filter((item) => item.price > 50);
+      result = result.filter((item) => minor(item.price) > t30 && minor(item.price) <= t50);
+    } else if (filterPrice === "over-50") result = result.filter((item) => minor(item.price) > t50);
 
     if (sortBy === "featured") {
       result.sort((a, b) => Number(b.isFeatured) - Number(a.isFeatured) || a.sortOrder - b.sortOrder);
     } else if (sortBy === "price") {
-      result.sort((a, b) => a.price - b.price);
-    } else {
+      result.sort((a, b) => {
+        const [left, right] = [minor(a.price), minor(b.price)];
+        return left < right ? -1 : left > right ? 1 : 0;
+      });
+    } else if (sortBy === "name") {
       result.sort((a, b) => a.name.localeCompare(b.name));
     }
+    // "order": keep the menu order (categories, then dishes) given by the server.
 
     return result;
   }, [
@@ -175,6 +197,7 @@ export default function MenuPage() {
     filterPromotion,
     filterPrice,
     sortBy,
+    currency,
   ]);
 
   if (!isReady || isLoadingRestaurants || loadingMenu) {
@@ -206,6 +229,8 @@ export default function MenuPage() {
     );
   }
 
+  const serverError = error ? { field: errorField, message: error } : null;
+
   if (!menu) {
     return (
       <div className="flex flex-col items-center justify-center text-center py-20 px-4">
@@ -231,6 +256,8 @@ export default function MenuPage() {
     );
   }
 
+  const preview = previewOpen ? previewBookMenu(menu) : null;
+
   return (
     <div className="flex flex-col gap-0 select-none animate-in fade-in duration-300">
       <MenuHeader
@@ -243,10 +270,47 @@ export default function MenuPage() {
           setAddPanelOpen(true);
         }}
         onPreview={() => setPreviewOpen(true)}
-        onPublish={() => run((token) => apiUpdateMenu(token, restaurantId, { isPublished: true }))}
+        onTogglePublish={() => {
+          if (menu.isPublished) {
+            setEmptyPublishAsk(false);
+            void run((token) => apiUpdateMenu(token, restaurantId, { isPublished: false }));
+          } else if (!hasAvailableDish) {
+            setEmptyPublishAsk(true);
+          } else {
+            void run((token) => apiUpdateMenu(token, restaurantId, { isPublished: true }));
+          }
+        }}
       />
+      {emptyPublishAsk && !menu.isPublished && (
+        <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <p className="text-sm font-semibold text-amber-900">This menu has no available dish.</p>
+          <p className="text-xs text-amber-800 mt-0.5">
+            Customers will see an empty menu and cannot pre-order. You can publish it anyway and add dishes later.
+          </p>
+          <div className="flex gap-2 mt-2.5">
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => {
+                setEmptyPublishAsk(false);
+                void run((token) => apiUpdateMenu(token, restaurantId, { isPublished: true }));
+              }}
+              className="px-3.5 py-1.5 rounded-lg bg-[#B55234] text-white text-xs font-bold disabled:opacity-50"
+            >
+              Publish anyway
+            </button>
+            <button
+              type="button"
+              onClick={() => setEmptyPublishAsk(false)}
+              className="px-3.5 py-1.5 rounded-lg border border-amber-300 bg-white text-xs font-semibold text-amber-900"
+            >
+              Keep as draft
+            </button>
+          </div>
+        </div>
+      )}
       <MenuTabs activeTab={activeTab} onChange={setActiveTab} />
-      {error && (
+      {error && !errorField && (
         <p className="mb-3 text-xs font-semibold text-[#B55234] bg-[#FAF0EA] border border-[#F3DFD4] rounded-xl px-3 py-2">
           {error}
         </p>
@@ -315,7 +379,15 @@ export default function MenuPage() {
                   }}
                   actionMenuId={actionMenuId}
                   setActionMenuId={setActionMenuId}
+                  onMove={
+                    sortBy === "order" && selectedCategory !== "all"
+                      ? (id, direction) => void run((token) => apiMoveItem(token, restaurantId, id, direction))
+                      : undefined
+                  }
                 />
+                {sortBy === "order" && selectedCategory === "all" && (
+                  <p className="mt-2 text-xs text-[#736D65]">Choose a category to reorder its dishes.</p>
+                )}
               </div>
             </div>
           </div>
@@ -327,6 +399,7 @@ export default function MenuPage() {
               categories={menu.categories}
               currency={currency}
               saving={saving}
+              serverError={serverError}
               onSave={(input) => {
                 void run(async (token) => {
                   const next = editingItem
@@ -350,6 +423,9 @@ export default function MenuPage() {
         <CategoriesManager
           categories={menu.categories}
           disabled={saving}
+          serverError={serverError}
+          onAdd={(name) => run((token) => apiCreateCategory(token, restaurantId, { name }))}
+          onMove={(id, direction) => run((token) => apiMoveCategory(token, restaurantId, id, direction))}
           onRename={(id, name) => run((token) => apiUpdateCategory(token, restaurantId, id, { name }))}
           onDelete={(id) =>
             run(async (token) => {
@@ -366,7 +442,9 @@ export default function MenuPage() {
           menu={menu}
           currency={currency}
           disabled={saving}
+          serverError={serverError}
           onCreate={(input) => run((token) => apiCreatePromotion(token, restaurantId, input))}
+          onUpdate={(id, input) => run((token) => apiUpdatePromotion(token, restaurantId, id, input))}
           onDelete={(id) => run((token) => apiDeletePromotion(token, restaurantId, id))}
         />
       )}
@@ -390,13 +468,35 @@ export default function MenuPage() {
         />
       )}
 
-      {previewOpen && (
-        <MenuPreview
-          restaurant={currentRestaurant}
-          menu={menu}
+      {previewOpen && preview && preview.book.categories.length > 0 && (
+        <MenuBookDialog
+          menu={preview.book}
           currency={currency}
+          decimals={preview.decimals}
+          restaurantName={currentRestaurant.name}
+          mode="manager-preview"
+          orderHint="Preview: customers order here after choosing a table."
+          notice={menu.isPublished ? null : "Draft preview: customers cannot see this menu until you publish it."}
           onClose={() => setPreviewOpen(false)}
         />
+      )}
+      {previewOpen && preview && preview.book.categories.length === 0 && (
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="max-w-sm rounded-2xl bg-white p-5 text-center">
+            <p className="text-sm font-bold text-[#1A1A1A]">Nothing to preview yet</p>
+            <p className="mt-1 text-xs text-[#736D65]">
+              Customers only see active categories that contain at least one dish.
+            </p>
+            <button
+              type="button"
+              autoFocus
+              onClick={() => setPreviewOpen(false)}
+              className="mt-4 rounded-xl bg-[#B55234] px-4 py-2 text-sm font-bold text-white"
+            >
+              Close
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

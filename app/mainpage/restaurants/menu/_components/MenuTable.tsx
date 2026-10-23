@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Copy, Eye, EyeOff, MoreVertical, Pencil, Search, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Copy, Eye, EyeOff, MoreVertical, Pencil, Search, Trash2 } from "lucide-react";
 import type { PublicMenuItem } from "@/lib/menu/types";
 import { STATUS_STYLES } from "../_lib/menu-ui";
 
@@ -40,6 +40,9 @@ function MenuItemRow({
   onToggleAvailability,
   isActionOpen,
   onToggleAction,
+  canMoveUp,
+  canMoveDown,
+  onMove,
 }: {
   item: PublicMenuItem;
   index: number;
@@ -50,6 +53,10 @@ function MenuItemRow({
   onToggleAvailability: () => void;
   isActionOpen: boolean;
   onToggleAction: () => void;
+  /** Undefined when reordering is off (other sort, or all categories shown). */
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
+  onMove?: (direction: "up" | "down") => void;
 }) {
   const status = item.isAvailable ? STATUS_STYLES.available : STATUS_STYLES.unavailable;
 
@@ -59,6 +66,28 @@ function MenuItemRow({
       style={{ animationDelay: `${index * 40}ms` }}
     >
       <div className="flex items-center gap-3 min-w-0">
+        {onMove && (
+          <div className="flex flex-col shrink-0">
+            <button
+              type="button"
+              disabled={!canMoveUp}
+              onClick={() => onMove("up")}
+              aria-label={`Move ${item.name} up`}
+              className="w-6 h-5 rounded hover:bg-[#E8E2D7] flex items-center justify-center text-[#736D65] disabled:opacity-25"
+            >
+              <ArrowUp className="w-3 h-3" />
+            </button>
+            <button
+              type="button"
+              disabled={!canMoveDown}
+              onClick={() => onMove("down")}
+              aria-label={`Move ${item.name} down`}
+              className="w-6 h-5 rounded hover:bg-[#E8E2D7] flex items-center justify-center text-[#736D65] disabled:opacity-25"
+            >
+              <ArrowDown className="w-3 h-3" />
+            </button>
+          </div>
+        )}
         <div className="w-11 h-11 rounded-xl overflow-hidden shrink-0 bg-[#F5F0E8] ring-1 ring-[#E8E2D7]">
           {item.imageUrl ? (
             <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" loading="lazy" />
@@ -143,7 +172,10 @@ export function MenuTable({
   onToggleAvailability,
   actionMenuId,
   setActionMenuId,
+  onMove,
 }: {
+  /** When set, rows get up/down buttons; `items` must then be one category in menu order. */
+  onMove?: (id: string, direction: "up" | "down") => void;
   items: PublicMenuItem[];
   currency: string;
   onEdit: (item: PublicMenuItem) => void;
@@ -187,6 +219,9 @@ export function MenuTable({
             onToggleAvailability={() => onToggleAvailability(item.id)}
             isActionOpen={actionMenuId === item.id}
             onToggleAction={() => setActionMenuId(actionMenuId === item.id ? null : item.id)}
+            canMoveUp={index > 0}
+            canMoveDown={index < items.length - 1}
+            onMove={onMove ? (direction) => onMove(item.id, direction) : undefined}
           />
         ))}
       </div>
