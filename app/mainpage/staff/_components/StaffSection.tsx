@@ -1,37 +1,26 @@
-import { Armchair, UtensilsCrossed } from "lucide-react";
-import { NOTIFICATIONS, TABLE_ISSUE } from "../_lib/board";
+import { Armchair, Bell, UtensilsCrossed } from "lucide-react";
 import type { StaffSectionId } from "../_lib/types";
 
 const COPY: Partial<Record<StaffSectionId, { title: string; body: string }>> = {
   tables: {
-    title: `Table ${TABLE_ISSUE.table}`,
-    body: `${TABLE_ISSUE.when}. The table is ${TABLE_ISSUE.state.toLowerCase()}, so the next party cannot be seated yet.`,
+    title: "Tables",
+    body: "The live state of your tables will be listed here.",
   },
   menu: {
     title: "Menu",
     body: "The dishes you can send from the pass will be listed here.",
   },
+  notifications: {
+    title: "Notifications",
+    body: "You have no notifications yet.",
+  },
 };
 
-export function StaffSection({ section }: { section: StaffSectionId }) {
-  if (section === "notifications") {
-    return (
-      <section className="rounded-2xl border border-[#EDE7DC] bg-white p-5">
-        <h1 className="text-xl font-extrabold">Notifications</h1>
-        <ul className="mt-4 flex flex-col gap-2">
-          {NOTIFICATIONS.map((item) => (
-            <li key={item.id} className="rounded-xl bg-[#FAF7F2] px-3 py-3">
-              <p className="text-sm font-semibold">{item.title}</p>
-              <p className="mt-0.5 text-[12px] text-[#8C877D]">{item.detail}</p>
-            </li>
-          ))}
-        </ul>
-      </section>
-    );
-  }
+const ICON = { tables: Armchair, notifications: Bell } as const;
 
+export function StaffSection({ section }: { section: StaffSectionId }) {
   const note = COPY[section];
-  const Icon = section === "tables" ? Armchair : UtensilsCrossed;
+  const Icon = section === "tables" || section === "notifications" ? ICON[section] : UtensilsCrossed;
 
   return (
     <section className="rounded-2xl border border-[#EDE7DC] bg-white px-6 py-16 text-center">

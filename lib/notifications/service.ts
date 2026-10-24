@@ -14,9 +14,13 @@ export type NotificationData = {
   status?: string;
   restaurantId?: string;
   role?: string;
+  /** Live floor alerts: the stable key that stops the same alert being written twice. */
+  alertKey?: string;
+  alertKind?: string;
+  tableId?: string;
 };
 
-export type NotificationKind = "RESERVATION" | "ORDER" | "STAFF_REQUEST";
+export type NotificationKind = "RESERVATION" | "ORDER" | "STAFF_REQUEST" | "SYSTEM";
 
 export type NewNotification = {
   userId: string;

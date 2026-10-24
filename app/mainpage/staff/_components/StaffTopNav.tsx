@@ -4,7 +4,6 @@ import Image from "next/image";
 import { Bell, ChevronDown, Menu, Search } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { profileInitials } from "../../_lib/profile";
-import { NOTIFICATIONS } from "../_lib/board";
 import { useStaffChrome } from "../_context/staff-chrome";
 
 const SECTION_LABEL = {
@@ -64,9 +63,6 @@ export function StaffTopNav() {
             aria-label="View notifications"
           >
             <Bell className="h-3.5 w-3.5" />
-            <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#E24B4B] px-1 text-[9px] font-bold text-white">
-              {NOTIFICATIONS.length}
-            </span>
           </button>
         ) : null}
         {workplace ? (

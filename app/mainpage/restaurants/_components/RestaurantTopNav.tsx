@@ -14,6 +14,7 @@ import {
   Store,
 } from "lucide-react";
 import { useRestaurantManager } from "../_context/RestaurantManagerContext";
+import { LiveAlertsPulse } from "./live/LiveAlertsPulse";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePathname } from "next/navigation";
 
@@ -90,6 +91,7 @@ export function RestaurantTopNav() {
           />
         </div>
 
+        <LiveAlertsPulse restaurantId={currentRestaurant?.id ?? null} />
         <NotificationBell />
 
         {/* Help icon button */}

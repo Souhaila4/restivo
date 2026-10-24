@@ -72,7 +72,7 @@ async function loadRestaurant(restaurantId: string) {
 type Restaurant = Awaited<ReturnType<typeof loadRestaurant>>;
 
 /** Display names, looked up once per person. */
-function nameLookup() {
+export function nameLookup() {
   const cache = new Map<string, string>();
   return async (userId: string): Promise<string> => {
     const cached = cache.get(userId);

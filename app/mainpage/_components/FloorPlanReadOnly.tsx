@@ -14,6 +14,9 @@ const EDGE_PADDING_PX = 24;
 
 export type TableState = "free" | "taken" | "too_small";
 
+/** A live colour for one table: the plan tints it and the table becomes a button. */
+export type LiveTone = { color: string; label: string };
+
 type FloorPlanReadOnlyProps = {
   width: number;
   height: number;
@@ -22,6 +25,8 @@ type FloorPlanReadOnlyProps = {
   tableStates?: Record<string, TableState>;
   selectedTableId?: string | null;
   onSelectTable?: (tableId: string) => void;
+  /** Live mode: every listed table is tinted with its colour and can be picked whatever its state. */
+  liveTables?: Record<string, LiveTone>;
 };
 
 const STATE_LABEL: Record<TableState, string> = {
@@ -41,6 +46,7 @@ export function FloorPlanReadOnly({
   tableStates,
   selectedTableId = null,
   onSelectTable,
+  liveTables,
 }: FloorPlanReadOnlyProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [available, setAvailable] = useState(0);
@@ -116,6 +122,34 @@ export function FloorPlanReadOnly({
                     height: `calc(${object.height} * var(--floor-meter))`,
                     transform: `rotate(${object.rotation}deg)`,
                     transformOrigin: "center center",
+                  }}
+                />
+              );
+            })
+          : null}
+        {liveTables
+          ? ordered.filter((object) => liveTables[object.id] !== undefined).map((object) => {
+              const tone = liveTables[object.id];
+              const name = String(object.metadata?.label ?? "Table");
+              const selected = object.id === selectedTableId;
+              return (
+                <button
+                  key={`${object.id}-live`}
+                  type="button"
+                  aria-pressed={selected}
+                  aria-label={`${name}, ${tone.label}`}
+                  onClick={() => onSelectTable?.(object.id)}
+                  className="absolute z-50 cursor-pointer rounded-md border-2 transition-colors focus-visible:outline-2 focus-visible:outline-[#1A1A1A]"
+                  style={{
+                    left: `calc(${object.x} * var(--floor-meter))`,
+                    top: `calc(${object.y} * var(--floor-meter))`,
+                    width: `calc(${object.width} * var(--floor-meter))`,
+                    height: `calc(${object.height} * var(--floor-meter))`,
+                    transform: `rotate(${object.rotation}deg)`,
+                    transformOrigin: "center center",
+                    backgroundColor: `${tone.color}${selected ? "66" : "40"}`,
+                    borderColor: tone.color,
+                    borderStyle: selected ? "solid" : "dashed",
                   }}
                 />
               );
