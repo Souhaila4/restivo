@@ -32,7 +32,7 @@ export type RosterMember = {
   id: string;
   userId: string;
   name: string;
-  role: "STAFF";
+  role: "STAFF" | "MANAGER";
   since: string | null;
 };
 

@@ -1,17 +1,17 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Search, ChevronDown, Bell, Menu } from "lucide-react";
+import { Search, ChevronDown, Menu } from "lucide-react";
 import { useMainpage } from "./MainpageProvider";
+import { NotificationBell } from "./NotificationBell";
 import { useAuth } from "@/contexts/AuthContext";
 import { profileInitials } from "../_lib/profile";
 
 export function TopNav() {
   const { searchQuery, setSearchQuery, openMobileMenu } = useMainpage();
   const { user } = useAuth();
-  const [showNotifications, setShowNotifications] = useState(false);
 
   const profileName =
     user?.displayName ||
@@ -46,23 +46,7 @@ export function TopNav() {
 
       {/* Right controls: Location + Bell + Profile */}
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-        {/* Notification Bell */}
-        <div className="relative">
-          <button
-            onClick={() => setShowNotifications(!showNotifications)}
-            className="w-8.5 h-8.5 rounded-full bg-[#FAF7F2]/80 hover:bg-white border border-[#E8E4DA] flex items-center justify-center text-[#4A4643] hover:text-[#1A1A1A] transition-all relative shadow-2xs"
-            aria-label="Notifications"
-          >
-            <Bell className="w-4 h-4" />
-          </button>
-
-          {showNotifications && (
-            <div className="absolute right-0 mt-1.5 w-64 bg-white rounded-xl border border-[#E8E4DA] shadow-xl p-3 z-30 animate-in fade-in zoom-in-95 duration-150">
-              <div className="text-xs font-semibold text-[#1A1A1A] mb-2">Notifications</div>
-              <p className="text-xs text-[#7A746B]">No notifications yet.</p>
-            </div>
-          )}
-        </div>
+        <NotificationBell />
 
         {/* User Profile Pill */}
         <Link

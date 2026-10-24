@@ -1,17 +1,15 @@
 "use client";
 
+import { NotificationBell } from "../../_components/NotificationBell";
 import React, { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
   Menu,
   Search,
-  Bell,
   HelpCircle,
   ChevronDown,
   Home,
-  CheckCircle2,
-  AlertCircle,
   Plus,
   Store,
 } from "lucide-react";
@@ -41,15 +39,13 @@ export function RestaurantTopNav() {
           ? "AI Manager"
           : "Overview";
 
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
-  const [hasUnreadNotification, setHasUnreadNotification] = useState(true);
 
   const userName =
     user?.displayName ||
     [user?.firstName, user?.lastName].filter(Boolean).join(" ") ||
-    "Ahmed";
-  const userAvatar = user?.avatarUrl || "/images/ahmed-avatar.jpg";
+    "Account";
+  const userAvatar = user?.avatarUrl || null;
 
   return (
     <header className="flex items-center justify-between gap-3 sm:gap-4 pb-4 border-b border-[#ECE7DC]">
@@ -94,56 +90,7 @@ export function RestaurantTopNav() {
           />
         </div>
 
-        {/* Notifications */}
-        <div className="relative">
-          <button
-            onClick={() => {
-              setNotificationsOpen(!notificationsOpen);
-              setHasUnreadNotification(false);
-            }}
-            className="w-8 h-8 rounded-full bg-white/80 hover:bg-white border border-[#E8E4DA] flex items-center justify-center text-[#4A4643] hover:text-[#1A1A1A] transition-all relative shadow-2xs"
-            aria-label="View notifications"
-          >
-            <Bell className="w-3.5 h-3.5" />
-            {hasUnreadNotification && (
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#E53E3E] ring-2 ring-[#FAF7F2]" />
-            )}
-          </button>
-
-          {notificationsOpen && (
-            <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl border border-[#E5DEC9] shadow-xl p-3.5 z-40 animate-in fade-in zoom-in-95 duration-150">
-              <div className="flex items-center justify-between pb-2 border-b border-[#ECE7DC] mb-2">
-                <span className="text-xs font-bold text-[#1A1A1A]">Live Alerts</span>
-                <span className="text-[10px] text-[#B55234] font-medium cursor-pointer">
-                  Mark read
-                </span>
-              </div>
-              <div className="flex flex-col gap-2 max-h-56 overflow-y-auto">
-                <div className="flex items-start gap-2.5 p-2 rounded-xl bg-[#FAF0EA]/60 text-xs">
-                  <AlertCircle className="w-4 h-4 text-[#B55234] shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-semibold text-[#1A1A1A]">Table 12 Request</p>
-                    <p className="text-[11px] text-[#7A746B]">
-                      Guest requested bill · 1,240 TND
-                    </p>
-                    <span className="text-[9px] text-[#9E988F]">2 mins ago</span>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-2.5 p-2 rounded-xl bg-[#F0FDF4] text-xs">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-semibold text-[#1A1A1A]">New Reservation</p>
-                    <p className="text-[11px] text-[#7A746B]">
-                      Sami Ben Ali (2 guests) for 10:30
-                    </p>
-                    <span className="text-[9px] text-[#9E988F]">12 mins ago</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+        <NotificationBell />
 
         {/* Help icon button */}
         <button
@@ -154,19 +101,20 @@ export function RestaurantTopNav() {
           <HelpCircle className="w-3.5 h-3.5" />
         </button>
 
-        {/* Ahmed User Pill */}
+        {/* User pill */}
         <div className="relative">
           <button
             onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
             className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-full bg-white/70 hover:bg-white border border-[#E8E4DA] transition-all shadow-2xs"
           >
             <div className="relative w-6 h-6 rounded-full overflow-hidden shrink-0 ring-1 ring-[#D8D2C5]">
-              <Image
-                src={userAvatar}
-                alt={userName}
-                fill
-                className="object-cover"
-              />
+              {userAvatar ? (
+                <Image src={userAvatar} alt={userName} fill className="object-cover" />
+              ) : (
+                <span className="flex h-full w-full items-center justify-center bg-[#FAF0EA] text-[10px] font-bold text-[#B55234]">
+                  {userName.slice(0, 1).toUpperCase()}
+                </span>
+              )}
             </div>
             <span className="text-xs font-semibold text-[#24211E] hidden sm:inline">
               {userName}

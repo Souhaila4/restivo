@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { Temporal } from "temporal-polyfill";
 import {
+  bookingLockKeys,
   canCancel,
   fitsBusinessHours,
   fitsCapacity,
@@ -90,10 +91,97 @@ describe("fitsBusinessHours", () => {
     assert.equal(fitsBusinessHours(early, slotAt("2026-11-02", "00:30"), DURATION), true);
   });
 
-  it("rejects a missing day and unsupported overnight hours", () => {
+  it("rejects a missing day", () => {
     assert.equal(fitsBusinessHours([], slotAt("2026-11-03", "19:00"), DURATION), false);
-    const overnight = [{ dayOfWeek: 2, isClosed: false, openTime: "18:00", closeTime: "02:00" }];
-    assert.equal(fitsBusinessHours(overnight, slotAt("2026-11-03", "19:00"), DURATION), false);
+  });
+
+  it("rejects a day whose closing time equals its opening time", () => {
+    const equal = [{ dayOfWeek: 2, isClosed: false, openTime: "09:00", closeTime: "09:00" }];
+    assert.equal(fitsBusinessHours(equal, slotAt("2026-11-03", "09:00"), DURATION), false);
+    assert.equal(fitsBusinessHours(equal, slotAt("2026-11-03", "12:00"), DURATION), false);
+  });
+});
+
+describe("fitsBusinessHours, hours past midnight", () => {
+  // Sunday 12:00-03:00, Monday closed, Tuesday-Saturday 11:00-23:00 (2026-11-01 is a Sunday).
+  const NIGHT: HoursDay[] = [
+    { dayOfWeek: 0, isClosed: false, openTime: "12:00", closeTime: "03:00" },
+    { dayOfWeek: 1, isClosed: true, openTime: null, closeTime: null },
+    ...[2, 3, 4, 5, 6].map((dayOfWeek) => ({ dayOfWeek, isClosed: false, openTime: "11:00", closeTime: "23:00" })),
+  ];
+  const fits = (date: string, time: string) => fitsBusinessHours(NIGHT, slotAt(date, time), DURATION);
+
+  it("accepts Sunday 22:00 in a restaurant open from 12:00 to 03:00", () => {
+    assert.equal(fits("2026-11-01", "22:00"), true);
+  });
+
+  it("accepts the edges of the opening day", () => {
+    assert.equal(fits("2026-11-01", "12:00"), true);
+    assert.equal(fits("2026-11-01", "11:59"), false);
+  });
+
+  it("accepts a slot that runs across midnight", () => {
+    assert.equal(fits("2026-11-01", "23:30"), true); // ends Monday 01:00
+    assert.equal(fits("2026-11-01", "23:59"), true); // ends Monday 01:29
+  });
+
+  it("attaches a slot after midnight to the previous day's window", () => {
+    assert.equal(fits("2026-11-02", "00:00"), true); // Monday, closed day, but Sunday's window is open
+    assert.equal(fits("2026-11-02", "01:00"), true);
+  });
+
+  it("accepts a slot ending exactly at the closing time, and refuses one minute more", () => {
+    assert.equal(fits("2026-11-02", "01:30"), true); // ends 03:00
+    assert.equal(fits("2026-11-02", "01:31"), false);
+    assert.equal(fits("2026-11-02", "03:00"), false);
+  });
+
+  it("refuses the rest of a closed Monday after the night window ends", () => {
+    assert.equal(fits("2026-11-02", "04:00"), false);
+    assert.equal(fits("2026-11-02", "19:00"), false);
+  });
+
+  it("does not stretch a normal day past midnight", () => {
+    assert.equal(fits("2026-11-07", "21:30"), true); // Saturday, ends 23:00 exactly
+    assert.equal(fits("2026-11-07", "22:00"), false);
+    assert.equal(fits("2026-11-08", "01:00"), false); // Sunday 01:00: Saturday does not close late, Sunday opens at 12:00
+  });
+
+  it("lets the next day open normally after a late night", () => {
+    const hours: HoursDay[] = [
+      { dayOfWeek: 1, isClosed: false, openTime: "18:00", closeTime: "02:00" },
+      { dayOfWeek: 2, isClosed: false, openTime: "11:00", closeTime: "23:00" },
+    ];
+    assert.equal(fitsBusinessHours(hours, slotAt("2026-11-03", "00:30"), DURATION), true); // Tuesday 00:30, Monday's window
+    assert.equal(fitsBusinessHours(hours, slotAt("2026-11-03", "01:00"), DURATION), false); // ends 02:30
+    assert.equal(fitsBusinessHours(hours, slotAt("2026-11-03", "11:00"), DURATION), true); // Tuesday's own window
+  });
+
+  it("follows the clock change of another time zone instead of wall-clock arithmetic", () => {
+    // Paris: Saturday 22:00 to Sunday 03:00, and the clocks jump from 02:00 to 03:00 on 2026-03-29.
+    const hours: HoursDay[] = [{ dayOfWeek: 6, isClosed: false, openTime: "22:00", closeTime: "03:00" }];
+    const paris = (iso: string): Slot => {
+      const startsAt = Temporal.Instant.from(iso);
+      return { startsAt, endsAt: startsAt, local: startsAt.toZonedDateTimeISO("Europe/Paris") };
+    };
+    const start = "2026-03-29T00:30:00Z"; // 01:30 CET, before the jump
+    // 30 minutes end at 03:00 CEST, the closing time: fits.
+    assert.equal(fitsBusinessHours(hours, paris(start), 30), true);
+    // 90 minutes end at 04:00 CEST: wall-clock arithmetic (01:30 + 90 = 03:00) would wrongly accept it.
+    assert.equal(fitsBusinessHours(hours, paris(start), 90), false);
+  });
+
+  it("counts the repeated hour when the clocks go back", () => {
+    // Paris: Saturday 22:00 to Sunday 03:00; on 2026-10-25 the clocks go back from 03:00 to 02:00.
+    const hours: HoursDay[] = [{ dayOfWeek: 6, isClosed: false, openTime: "22:00", closeTime: "03:00" }];
+    const slot = (iso: string): Slot => {
+      const startsAt = Temporal.Instant.from(iso);
+      return { startsAt, endsAt: startsAt, local: startsAt.toZonedDateTimeISO("Europe/Paris") };
+    };
+    // The window really ends at 02:00Z (03:00 CET), one hour later than on a normal night.
+    assert.equal(fitsBusinessHours(hours, slot("2026-10-25T00:30:00Z"), 90), true); // 02:30 CEST, ends 02:00Z
+    assert.equal(fitsBusinessHours(hours, slot("2026-10-25T01:30:00Z"), 30), true); // second 02:30 (CET), ends 02:00Z
+    assert.equal(fitsBusinessHours(hours, slot("2026-10-25T01:30:00Z"), 31), false);
   });
 });
 
@@ -202,5 +290,21 @@ describe("makeReservationCode", () => {
       const code = makeReservationCode((max) => (seed * 7 + max) % max);
       assert.doesNotMatch(code.slice(4), /[01OIL]/);
     }
+  });
+});
+
+describe("bookingLockKeys", () => {
+  it("lists the keys in one fixed order, whichever table is current or next", () => {
+    const forward = bookingLockKeys("r1", "tA", "tB");
+    const backward = bookingLockKeys("r2", "tB", "tA");
+    assert.deepEqual(
+      forward.filter((key) => key.startsWith("reservation-table:")),
+      backward.filter((key) => key.startsWith("reservation-table:")),
+    );
+    assert.deepEqual(forward, [...forward].sort());
+  });
+
+  it("takes a single table lock when the table does not change", () => {
+    assert.deepEqual(bookingLockKeys("r1", "tA", "tA"), ["reservation-table:tA", "reservation:r1"]);
   });
 });

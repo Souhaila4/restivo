@@ -7,10 +7,14 @@ import { db } from "@/lib/db";
 import { RestaurantError } from "@/lib/restaurants/errors";
 import { publishBlocker } from "@/lib/restaurants/publish";
 import { listFloors } from "@/lib/floors/service";
-import { matchesQuery } from "./search";
+import { favoriteIds } from "@/lib/favorites/service";
+import { NO_RATING, ratingSummaries } from "@/lib/reviews/service";
+import type { RatingSummary } from "@/lib/reviews/rules";
+import { distinctCuisines, matchesFilters, matchesQuery } from "./search";
 import type {
   DiscoverFloor,
   DiscoverHours,
+  DiscoverList,
   DiscoverRestaurantDetail,
   DiscoverRestaurantSummary,
   DiscoverTable,
@@ -49,7 +53,10 @@ export async function listBookableTables(restaurantId: string): Promise<Discover
   return (await Promise.all(active.map((floor) => activeTables(floor.id)))).flat();
 }
 
-function toSummary(row: RestaurantRow): DiscoverRestaurantSummary {
+function toSummary(
+  row: RestaurantRow,
+  extras: { rating: RatingSummary; isFavorite: boolean },
+): DiscoverRestaurantSummary {
   return {
     id: row.id,
     name: row.name,
@@ -57,23 +64,53 @@ function toSummary(row: RestaurantRow): DiscoverRestaurantSummary {
     city: row.city,
     coverUrl: row.coverUrl,
     logoUrl: row.logoUrl,
+    cuisine: row.cuisine,
+    priceLevel: row.priceLevel,
+    currency: row.currency,
+    averageRating: extras.rating.average,
+    reviewCount: extras.rating.count,
+    isFavorite: extras.isFavorite,
   };
 }
 
-export async function listDiscoverRestaurants(query: string): Promise<DiscoverRestaurantSummary[]> {
-  const rows = await db.orm.public.Restaurant.where({ status: "ACTIVE" }).all();
+export async function listDiscoverRestaurants(
+  userId: string,
+  query: string,
+  filters: { cuisine?: string; price?: number[] } = {},
+): Promise<DiscoverList> {
+  // Ratings and favorites each come from one query, whatever the number of restaurants.
+  const [rows, ratings, favorites] = await Promise.all([
+    db.orm.public.Restaurant.where({ status: "ACTIVE" }).all(),
+    ratingSummaries(),
+    favoriteIds(userId),
+  ]);
+  // Filters run on the rows already in memory, before the per-restaurant floor lookups.
   const matching = rows
-    .filter((row) => matchesQuery(row, query))
+    .filter((row) => matchesQuery(row, query) && matchesFilters(row, filters))
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const result: DiscoverRestaurantSummary[] = [];
   for (const row of matching) {
-    if (await bookableFloors(row.id)) result.push(toSummary(row));
+    if (await bookableFloors(row.id)) {
+      result.push(toSummary(row, { rating: ratings.get(row.id) ?? NO_RATING, isFavorite: favorites.has(row.id) }));
+    }
   }
-  return result;
+  return { restaurants: result, cuisines: distinctCuisines(rows.map((row) => row.cuisine)) };
 }
 
-export async function getDiscoverRestaurant(id: string): Promise<DiscoverRestaurantDetail> {
+/** The customer's favorites that can still be booked, in alphabetical order. */
+export async function listFavoriteRestaurants(userId: string): Promise<DiscoverRestaurantSummary[]> {
+  const [ids, ratings] = await Promise.all([favoriteIds(userId), ratingSummaries()]);
+  const result: DiscoverRestaurantSummary[] = [];
+  for (const id of ids) {
+    const row = await findRestaurant(id);
+    if (!row || row.status !== "ACTIVE" || !(await bookableFloors(row.id))) continue;
+    result.push(toSummary(row, { rating: ratings.get(row.id) ?? NO_RATING, isFavorite: true }));
+  }
+  return result.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function getDiscoverRestaurant(id: string, userId: string): Promise<DiscoverRestaurantDetail> {
   const row = await findRestaurant(id);
   if (!row || row.status !== "ACTIVE") {
     throw new RestaurantError("NOT_FOUND", "Restaurant not found.");
@@ -99,8 +136,10 @@ export async function getDiscoverRestaurant(id: string): Promise<DiscoverRestaur
     objects: floor.objects,
   }));
 
+  const [ratings, favorites] = await Promise.all([ratingSummaries(), favoriteIds(userId)]);
+
   return {
-    ...toSummary(row),
+    ...toSummary(row, { rating: ratings.get(row.id) ?? NO_RATING, isFavorite: favorites.has(row.id) }),
     address: row.address,
     phone: row.phone,
     website: row.website,

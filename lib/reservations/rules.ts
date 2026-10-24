@@ -5,8 +5,11 @@
  * pass the constants from `./constants`. This file only imports the Temporal
  * polyfill and nothing from the app.
  *
- * Known limit (V1): opening hours that run past midnight (close <= open) are
- * not supported. A slot must start and end on the same local day.
+ * Opening hours may run past midnight (12:00 to 03:00): the window belongs to
+ * the day it opens on, and a slot after midnight is matched to the previous
+ * day's window. Closing equal to opening is not a valid day (no 24-hour mode).
+ * Everything is computed as instants in the restaurant time zone, so a clock
+ * change inside a window is handled by the zone rules, not by hard-coded offsets.
  */
 import { Temporal } from "temporal-polyfill";
 
@@ -56,24 +59,44 @@ export type HoursDay = {
   closeTime: string | null;
 };
 
-function minutesOf(time: string | null): number | null {
+function timeOf(time: string | null): Temporal.PlainTime | null {
   const match = time ? /^(\d{1,2}):(\d{2})/.exec(time) : null;
-  return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+  if (!match || Number(match[1]) > 23 || Number(match[2]) > 59) return null;
+  return Temporal.PlainTime.from({ hour: Number(match[1]), minute: Number(match[2]) });
 }
 
-/** True when the whole slot (start to end) lies inside that day's opening hours. */
+/**
+ * True when the whole slot (start to end) lies inside one opening window. The
+ * windows that can hold it open on the slot's local date, or on the day before
+ * when that day closes after midnight.
+ */
 export function fitsBusinessHours(hours: HoursDay[], slot: Slot, durationMinutes: number): boolean {
-  // Temporal: 1 = Monday ... 7 = Sunday. Stored: 0 = Sunday ... 6 = Saturday.
-  const dayOfWeek = slot.local.dayOfWeek % 7;
-  const day = hours.find((entry) => entry.dayOfWeek === dayOfWeek);
-  if (!day || day.isClosed) return false;
+  const timeZone = slot.local.timeZoneId;
+  const startMs = slot.startsAt.epochMilliseconds;
+  const endMs = startMs + durationMinutes * MS_PER_MINUTE;
+  const slotDate = slot.local.toPlainDate();
 
-  const open = minutesOf(day.openTime);
-  const close = minutesOf(day.closeTime);
-  if (open === null || close === null || close <= open) return false;
+  for (const offset of [0, -1]) {
+    const opening = slotDate.add({ days: offset });
+    // Temporal: 1 = Monday ... 7 = Sunday. Stored: 0 = Sunday ... 6 = Saturday.
+    const entry = hours.find((candidate) => candidate.dayOfWeek === opening.dayOfWeek % 7);
+    if (!entry || entry.isClosed) continue;
 
-  const start = slot.local.hour * 60 + slot.local.minute;
-  return start >= open && start + durationMinutes <= close;
+    const open = timeOf(entry.openTime);
+    const close = timeOf(entry.closeTime);
+    if (!open || !close) continue;
+    const order = Temporal.PlainTime.compare(close, open);
+    if (order === 0) continue; // equal times are not a valid day
+    const overnight = order < 0;
+    if (offset === -1 && !overnight) continue;
+
+    const windowStart = opening.toZonedDateTime({ timeZone, plainTime: open }).epochMilliseconds;
+    const windowEnd = opening
+      .add({ days: overnight ? 1 : 0 })
+      .toZonedDateTime({ timeZone, plainTime: close }).epochMilliseconds;
+    if (startMs >= windowStart && endMs <= windowEnd) return true;
+  }
+  return false;
 }
 
 // ─── Lead time and horizon ────────────────────────────────────────────────────
@@ -138,4 +161,17 @@ export function makeReservationCode(random: (max: number) => number): string {
   let suffix = "";
   for (let i = 0; i < 6; i += 1) suffix += CODE_ALPHABET[random(CODE_ALPHABET.length)];
   return `RST-${suffix}`;
+}
+
+// ─── Locks when a reservation changes ─────────────────────────────────────────
+
+/**
+ * The advisory-lock keys to take when a reservation changes table or time, in one fixed
+ * order (sorted, without duplicates). Two changes that touch the same pair of tables
+ * then queue instead of waiting on each other.
+ */
+export function bookingLockKeys(reservationId: string, currentTableId: string, nextTableId: string): string[] {
+  return [
+    ...new Set([`reservation:${reservationId}`, `reservation-table:${currentTableId}`, `reservation-table:${nextTableId}`]),
+  ].sort();
 }

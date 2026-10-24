@@ -1,5 +1,6 @@
 "use client";
 
+import { RestaurantLoadError } from "../_components/RestaurantLoadError";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Store } from "lucide-react";
@@ -13,7 +14,7 @@ import { TeamTable } from "./_components/TeamTable";
 export default function RestaurantStaffPage() {
   const router = useRouter();
   const { user, isReady } = useAuth();
-  const { currentRestaurant, isLoadingRestaurants, setIsAddRestaurantOpen } = useRestaurantManager();
+  const { currentRestaurant, isLoadingRestaurants, setIsAddRestaurantOpen, loadError, reloadRestaurants } = useRestaurantManager();
   const roster = useRestaurantRoster(currentRestaurant?.id);
   const [query, setQuery] = useState("");
 
@@ -25,6 +26,8 @@ export default function RestaurantStaffPage() {
   if (!isReady || isLoadingRestaurants) {
     return <p className="py-24 text-center text-sm text-[#7A746B]">Loading staff…</p>;
   }
+
+  if (loadError) return <RestaurantLoadError message={loadError} onRetry={reloadRestaurants} />;
 
   if (!currentRestaurant) {
     return (
@@ -83,6 +86,9 @@ export default function RestaurantStaffPage() {
         <>
           <TeamTable
             members={members}
+            canManageTeam={currentRestaurant.role === "Owner"}
+            pendingId={roster.pendingId}
+            onChangeRole={roster.changeRole}
             empty={needle ? "No staff match that search." : "No staff at this restaurant yet."}
           />
           <RequestList

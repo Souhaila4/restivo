@@ -1,4 +1,7 @@
 import { Temporal } from "temporal-polyfill";
+import { AuthError } from "@/lib/auth/errors";
+import { createNotificationIn } from "@/lib/notifications/service";
+import { ROLE_CHANGE_MESSAGES, roleChangeIssue } from "./roles";
 import { db } from "@/lib/db";
 import { RestaurantError } from "@/lib/restaurants/errors";
 import type { RestaurantRoster, RosterMember, RosterRequest, RosterReview } from "./types";
@@ -49,24 +52,22 @@ function toMember(row: MembershipRow, name: string): RosterMember {
     id: row.id,
     userId: row.userId,
     name,
-    role: "STAFF",
+    role: row.role === "MANAGER" ? "MANAGER" : "STAFF",
     since: instantToString(row.joinedAt ?? row.createdAt),
   };
 }
 
 export async function loadRoster(restaurantId: string): Promise<RestaurantRoster> {
-  const [memberships, requests] = await Promise.all([
-    db.orm.public.RestaurantMembership.where({
-      restaurantId,
-      role: "STAFF",
-      status: "ACTIVE",
-    }).all(),
+  const [team, requests] = await Promise.all([
+    db.orm.public.RestaurantMembership.where({ restaurantId, status: "ACTIVE" }).all(),
     db.orm.public.RestaurantMembershipRequest.where({
       restaurantId,
       status: "PENDING",
     }).all(),
   ]);
 
+  // The owner is not listed: only staff and the managers they named.
+  const memberships = team.filter((row) => row.role === "STAFF" || row.role === "MANAGER");
   const names = await namesFor([
     ...memberships.map((row) => row.userId),
     ...requests.map((row) => row.userId),
@@ -213,4 +214,76 @@ async function placeOnTeam(tx: Tx, userId: string, restaurantId: string, joinedA
     status: "ACTIVE",
     joinedAt,
   });
+}
+
+/**
+ * The owner names a staff member manager, or takes the manager role back. The change, its
+ * audit entry and the notification to that person share one transaction; the rules are in
+ * `roles.ts`. Whether the person can manage restaurants follows from the membership, which
+ * access checks read from the database on every request.
+ */
+export async function changeTeamRole(
+  actor: { id: string; role: string },
+  restaurantId: string,
+  membershipId: string,
+  newRole: string
+): Promise<RosterMember> {
+  const target = await db.orm.public.RestaurantMembership.where({ id: membershipId }).first();
+  // A membership of another restaurant looks exactly like a missing one.
+  if (!target || target.restaurantId !== restaurantId) {
+    throw new RestaurantError("NOT_FOUND", "That team member was not found.");
+  }
+
+  const [profile, restaurant] = await Promise.all([
+    db.orm.public.Profile.where({ userId: target.userId }).first(),
+    db.orm.public.Restaurant.where({ id: restaurantId }).first(),
+  ]);
+
+  await db.transaction(async (tx) => {
+    const fresh = await tx.orm.public.RestaurantMembership.where({ id: membershipId }).first();
+    if (!fresh || fresh.restaurantId !== restaurantId) {
+      throw new RestaurantError("NOT_FOUND", "That team member was not found.");
+    }
+
+    const issue = roleChangeIssue({
+      actorRole: actor.role,
+      actorId: actor.id,
+      targetId: fresh.userId,
+      targetRole: fresh.role,
+      targetStatus: fresh.status,
+      newRole,
+    });
+    if (issue === "NOT_OWNER" || issue === "TARGET_IS_OWNER" || issue === "SELF") {
+      throw new AuthError("FORBIDDEN", ROLE_CHANGE_MESSAGES[issue]);
+    }
+    if (issue === "INVALID_ROLE") throw new RestaurantError("VALIDATION_ERROR", ROLE_CHANGE_MESSAGES[issue], "role");
+    if (issue) throw new RestaurantError("CONFLICT", ROLE_CHANGE_MESSAGES[issue]);
+
+    await tx.orm.public.RestaurantMembership.where({ id: membershipId }).update({ role: newRole as "MANAGER" | "STAFF" });
+    await tx.orm.public.AuditLog.create({
+      userId: actor.id,
+      restaurantId,
+      action: "UPDATE",
+      entityType: "RestaurantMembership",
+      entityId: membershipId,
+      metadata: { memberId: fresh.userId, from: fresh.role, to: newRole },
+    });
+
+    const venue = restaurant?.name ?? "the restaurant";
+    await createNotificationIn(tx, {
+      userId: fresh.userId,
+      restaurantId,
+      type: "STAFF_REQUEST",
+      title: newRole === "MANAGER" ? "You are now a manager" : "Your role changed",
+      message:
+        newRole === "MANAGER"
+          ? `The owner of ${venue} made you a manager. You can now manage reservations, orders and the menu.`
+          : `The owner of ${venue} changed your role back to staff.`,
+      data: { restaurantId, role: newRole },
+    });
+  });
+
+  const saved = await db.orm.public.RestaurantMembership.where({ id: membershipId }).first();
+  if (!saved) throw new RestaurantError("INTERNAL_ERROR");
+  return toMember(saved, personName(profile ?? null));
 }

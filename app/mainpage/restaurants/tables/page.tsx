@@ -1,5 +1,6 @@
 "use client";
 
+import { RestaurantLoadError } from "../_components/RestaurantLoadError";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Store } from "lucide-react";
@@ -16,7 +17,7 @@ import { TablesList } from "./_components/TablesList";
 export default function TablesAndFloorsPage() {
   const router = useRouter();
   const { user, isReady } = useAuth();
-  const { currentRestaurant, isLoadingRestaurants, setIsAddRestaurantOpen } = useRestaurantManager();
+  const { currentRestaurant, isLoadingRestaurants, setIsAddRestaurantOpen, loadError, reloadRestaurants } = useRestaurantManager();
   const floorsApi = useRestaurantFloors(currentRestaurant?.id);
   const [dialog, setDialog] = useState<"create" | "edit" | null>(null);
 
@@ -28,6 +29,8 @@ export default function TablesAndFloorsPage() {
   if (!isReady || isLoadingRestaurants) {
     return <Status>Loading tables…</Status>;
   }
+
+  if (loadError) return <RestaurantLoadError message={loadError} onRetry={reloadRestaurants} />;
 
   if (!currentRestaurant) {
     return (
@@ -64,13 +67,9 @@ export default function TablesAndFloorsPage() {
         onAdd={() => setDialog("create")}
         onEdit={() => setDialog("edit")}
         onDuplicate={() => floor && void floorsApi.duplicate(floor.id)}
-        onDelete={() => {
-          if (!floor) return;
-          if (window.confirm(`Delete ${floor.name}? Tables on this floor are removed with it.`)) {
-            void floorsApi.remove(floor.id);
-          }
-        }}
+        onDelete={() => floor && void floorsApi.remove(floor.id)}
         onReorder={() => floor && void floorsApi.reorder(floor.id)}
+        onToggleActive={(isActive) => floor && void floorsApi.setActive(floor.id, isActive).catch(() => undefined)}
       />
       {floorsApi.error ? <p className="mb-3 text-sm font-medium text-[#B55234]">{floorsApi.error}</p> : null}
       {floorsApi.loading ? <Status>Loading floors…</Status> : null}

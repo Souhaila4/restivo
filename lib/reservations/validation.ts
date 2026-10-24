@@ -23,6 +23,20 @@ export const createReservationSchema = z.object({
 export type CreateReservationBody = z.infer<typeof createReservationSchema>;
 
 /**
+ * A change to an existing reservation: the same fields and rules as a booking.
+ * Notes left out stay as they are; an empty string clears them.
+ */
+export const updateReservationSchema = z.object({
+  tableId: z.string().min(1, "Choose a table."),
+  date: dateField,
+  time: timeField,
+  guestCount: guestsField,
+  notes: z.string().trim().max(500, "Keep notes under 500 characters.").optional(),
+});
+
+export type UpdateReservationBody = z.infer<typeof updateReservationSchema>;
+
+/**
  * Reservation and optional pre-order in one request. As for a plain order, only
  * dish ids and quantities are read: any price the client sends is dropped.
  */

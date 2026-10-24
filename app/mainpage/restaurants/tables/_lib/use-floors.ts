@@ -9,6 +9,7 @@ import {
   apiDuplicateFloor,
   apiListFloors,
   apiReorderFloor,
+  apiSetFloorActive,
   apiSaveLayout,
   apiUpdateFloor,
 } from "@/lib/floors/client";
@@ -112,6 +113,14 @@ export function useRestaurantFloors(restaurantId: string | undefined) {
     [run],
   );
 
+  const setActive = useCallback(
+    (floorId: string, isActive: boolean) =>
+      run(async (accessToken, id) => {
+        setFloors(await apiSetFloorActive(accessToken, id, floorId, isActive));
+      }),
+    [run],
+  );
+
   const saveLayout = useCallback(
     async (objects: FloorObject[], publish = false) => {
       if (!restaurantId || !activeId) throw new Error("Choose a floor first.");
@@ -124,7 +133,7 @@ export function useRestaurantFloors(restaurantId: string | undefined) {
 
   const activeFloor = floors.find((floor) => floor.id === activeId) ?? null;
 
-  return { floors, activeFloor, loading, error, select: setActiveId, create, update, remove, duplicate, reorder, saveLayout };
+  return { floors, activeFloor, loading, error, select: setActiveId, create, update, remove, duplicate, reorder, setActive, saveLayout };
 }
 
 function messageOf(err: unknown) {

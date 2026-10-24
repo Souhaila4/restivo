@@ -11,9 +11,9 @@ type RouteContext = { params: Promise<{ restaurantId: string }> };
 
 export async function GET(request: Request, context: RouteContext): Promise<Response> {
   try {
-    await requireActiveUser(request);
+    const user = await requireActiveUser(request);
     const { restaurantId } = await context.params;
-    const restaurant = await getDiscoverRestaurant(restaurantId);
+    const restaurant = await getDiscoverRestaurant(restaurantId, user.id);
     return Response.json({ ok: true, restaurant });
   } catch (err) {
     return toRestaurantErrorResponse(err);

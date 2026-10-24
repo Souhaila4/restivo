@@ -21,6 +21,14 @@ export const RESTAURANT_ERROR_CODES = {
     status: 409,
     message: "This resource already exists.",
   },
+  FLOOR_HAS_RESERVATIONS: {
+    status: 409,
+    message: "This floor has upcoming or current reservations. Move or cancel them first.",
+  },
+  LAST_ACTIVE_FLOOR: {
+    status: 409,
+    message: "A published restaurant needs at least one active floor with a table. Unpublish it first, or activate another floor.",
+  },
   NOT_PUBLISHABLE: {
     status: 409,
     message: "This restaurant is not ready to be published.",

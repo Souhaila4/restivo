@@ -56,6 +56,15 @@ export default function OrdersPage() {
     };
   }, [signedIn, attempt, getFreshAccessToken]);
 
+  // Statuses change on the manager side: refresh quietly every 30 seconds.
+  useEffect(() => {
+    if (!signedIn) return undefined;
+    const timer = window.setInterval(() => {
+      if (!document.hidden) setAttempt((value) => value + 1);
+    }, 30_000);
+    return () => window.clearInterval(timer);
+  }, [signedIn]);
+
   return (
     <div className="mt-3 pb-4">
       <h1 className="mb-4 text-2xl font-extrabold tracking-tight text-[#1A1A1A] sm:text-3xl">Orders</h1>
@@ -127,7 +136,7 @@ function OrderCard({ order }: { order: PublicOrder }) {
         <span
           className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${STATUS_STYLE[order.status] ?? ""}`}
         >
-          {STATUS_LABEL[order.status] ?? order.status}
+          {order.cancelledByRestaurant ? "Cancelled by the restaurant" : (STATUS_LABEL[order.status] ?? order.status)}
         </span>
       </div>
 

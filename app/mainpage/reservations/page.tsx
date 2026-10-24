@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { CalendarX, Loader2 } from "lucide-react";
+import { CalendarX, Loader2, Star } from "lucide-react";
 import { apiCancelReservation, apiListMyReservations } from "@/lib/reservations/client";
 import { formatSlotDate, formatSlotTime } from "@/lib/reservations/format";
 import type { PublicReservation } from "@/lib/reservations/types";
+import { RatingStars } from "../_components/RatingStars";
+import { ReviewForm } from "../_components/ReviewForm";
 import { useRequireSignIn } from "../_lib/useRequireSignIn";
 
 type Load =
@@ -59,6 +61,15 @@ export default function ReservationsPage() {
       cancelled = true;
     };
   }, [signedIn, attempt, getFreshAccessToken]);
+
+  // Statuses change on the manager side: refresh quietly every 30 seconds.
+  useEffect(() => {
+    if (!signedIn) return undefined;
+    const timer = window.setInterval(() => {
+      if (!document.hidden) setAttempt((value) => value + 1);
+    }, 30_000);
+    return () => window.clearInterval(timer);
+  }, [signedIn]);
 
   async function cancel(id: string) {
     setBusy(id);
@@ -218,6 +229,10 @@ function Card({
   onCancel: (id: string) => void;
 }) {
   const tz = item.restaurant.timezone;
+  // The review is saved on the server; keep what was just sent without reloading the list.
+  const [savedRating, setSavedRating] = useState<number | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+  const reviewRating = savedRating ?? item.review?.rating ?? null;
   return (
     <article className="rounded-2xl border border-[#E8E2D7] bg-white p-4 shadow-2xs">
       <div className="flex items-start justify-between gap-2">
@@ -230,7 +245,7 @@ function Card({
         <span
           className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${STATUS_STYLE[item.status] ?? ""}`}
         >
-          {STATUS_LABEL[item.status] ?? item.status}
+          {item.cancelledByRestaurant ? "Cancelled by the restaurant" : (STATUS_LABEL[item.status] ?? item.status)}
         </span>
       </div>
       <p className="mt-2 text-xs text-[#524D48]">
@@ -246,6 +261,14 @@ function Card({
         >
           Open restaurant
         </Link>
+        {item.canCancel ? (
+          <Link
+            href={`/mainpage/explore/${item.restaurant.id}?change=${encodeURIComponent(item.id)}`}
+            className="rounded-full border border-[#D8D2C5] px-3.5 py-1.5 text-xs font-medium text-[#423E3A] hover:bg-black/5"
+          >
+            Change
+          </Link>
+        ) : null}
         {item.canCancel ? (
           <Link
             href={`/mainpage/explore/${item.restaurant.id}?preorder=${encodeURIComponent(item.id)}`}
@@ -284,7 +307,33 @@ function Card({
             </button>
           )
         ) : null}
+        {item.status === "COMPLETED" && reviewRating === null && !reviewing ? (
+          <button
+            type="button"
+            onClick={() => setReviewing(true)}
+            className="inline-flex items-center gap-1 rounded-full bg-[#B55234] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#9E4328]"
+          >
+            <Star className="h-3 w-3" aria-hidden="true" />
+            Leave a review
+          </button>
+        ) : null}
+        {item.status === "COMPLETED" && reviewRating !== null ? (
+          <span className="inline-flex items-center gap-1.5 text-xs text-[#524D48]">
+            Your review <RatingStars value={reviewRating} />
+          </span>
+        ) : null}
       </div>
+      {reviewing && reviewRating === null ? (
+        <ReviewForm
+          reservationId={item.id}
+          restaurantName={item.restaurant.name}
+          onSaved={(rating) => {
+            setSavedRating(rating);
+            setReviewing(false);
+          }}
+          onCancel={() => setReviewing(false)}
+        />
+      ) : null}
     </article>
   );
 }

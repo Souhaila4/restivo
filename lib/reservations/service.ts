@@ -12,16 +12,19 @@ import { randomInt } from "node:crypto";
 import { db } from "@/lib/db";
 import { listBookableTables } from "@/lib/discover/service";
 import { advisoryXactLock } from "@/lib/locks";
+import { cancelledByRestaurant } from "@/lib/manager/cancellation";
 import { CASCADE_CANCEL_STATUSES } from "@/lib/orders/constants";
 import {
   BLOCKING_STATUSES,
   CANCELLABLE_STATUSES,
+  EDITABLE_STATUSES,
   MAX_DAYS_AHEAD,
   MIN_LEAD_MINUTES,
   SLOT_DURATION_MINUTES,
 } from "./constants";
 import { ReservationError } from "./errors";
 import {
+  bookingLockKeys,
   canCancel,
   fitsBusinessHours,
   fitsCapacity,
@@ -35,7 +38,7 @@ import {
   type Slot,
 } from "./rules";
 import type { Availability, PublicReservation, ReservationStatus } from "./types";
-import type { CreateReservationBody } from "./validation";
+import type { CreateReservationBody, UpdateReservationBody } from "./validation";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -123,6 +126,8 @@ export async function getAvailability(
   date: string,
   time: string,
   guests?: number,
+  /** While changing a reservation, its own current slot does not count as taken. */
+  ignore?: { reservationId: string; userId: string },
 ): Promise<Availability> {
   const restaurant = await loadActiveRestaurant(restaurantId);
   const slot = readSlot(date, time, restaurant.timezone);
@@ -148,6 +153,7 @@ export async function getAvailability(
   ]);
   const taken = new Set(
     reservations
+      .filter((row) => !(ignore && row.id === ignore.reservationId && row.customerId === ignore.userId))
       .filter((row) => isBlocking(row.status) && hasConflict([toInterval(row)], candidate))
       .map((row) => row.tableId),
   );
@@ -306,6 +312,8 @@ function toPublic(
     restaurant: { id: restaurant.id, name: restaurant.name, city: restaurant.city, timezone: restaurant.timezone },
     table: { id: table.id, name: table.name },
     canCancel: canCancel(row.status, startsAt.epochMilliseconds, nowMs, CANCELLABLE_STATUSES),
+    cancelledByRestaurant: false,
+    review: null,
   };
 }
 
@@ -315,6 +323,10 @@ export async function listMyReservations(userId: string): Promise<PublicReservat
   const tables = new Map<string, Awaited<ReturnType<typeof loadTableRow>>>();
   const nowMs = Date.now();
 
+  // One query for all the customer's reviews, then a lookup per reservation.
+  const reviews = await db.orm.public.Review.where({ customerId: userId }).all();
+  const ratingByReservation = new Map(reviews.map((review) => [review.reservationId, review.rating]));
+
   const result: PublicReservation[] = [];
   for (const row of rows) {
     if (!restaurants.has(row.restaurantId)) restaurants.set(row.restaurantId, await loadRestaurantRow(row.restaurantId));
@@ -322,7 +334,11 @@ export async function listMyReservations(userId: string): Promise<PublicReservat
     const restaurant = restaurants.get(row.restaurantId);
     const table = tables.get(row.tableId);
     if (!restaurant || !table) continue;
-    result.push(toPublic(row, restaurant, table, nowMs));
+    const item = toPublic(row, restaurant, table, nowMs);
+    if (row.status === "CANCELLED") item.cancelledByRestaurant = await cancelledByRestaurant("Reservation", row.id, userId);
+    const rating = ratingByReservation.get(row.id);
+    if (rating !== undefined) item.review = { rating };
+    result.push(item);
   }
 
   return result.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
@@ -385,4 +401,98 @@ export async function cancelReservation(userId: string, reservationId: string): 
     reservation: toPublic({ ...row, status: "CANCELLED" }, restaurant, table, Date.now()),
     cancelledOrders: cancelledOrderIds.length,
   };
+}
+
+/**
+ * Changes the date, time, table, guests or notes of an upcoming reservation, with exactly
+ * the rules of a new booking (hours including after midnight, capacity, lead time, overlap).
+ * The reservation keeps its code and its pre-orders. The locks of the reservation and of both
+ * tables are taken in one fixed order, so two changes cannot wait on each other.
+ */
+export async function updateReservation(
+  userId: string,
+  reservationId: string,
+  input: UpdateReservationBody,
+): Promise<PublicReservation> {
+  const current = await db.orm.public.Reservation.where({ id: reservationId }).first();
+  if (!current) throw new ReservationError("NOT_FOUND", "Reservation not found.");
+  if (!ownsReservation(userId, current.customerId)) throw new ReservationError("FORBIDDEN");
+  if (!canCancel(current.status, toInstant(current.startsAt).epochMilliseconds, Date.now(), EDITABLE_STATUSES)) {
+    throw new ReservationError("NOT_MODIFIABLE");
+  }
+
+  const notes = input.notes === undefined ? (current.notes ?? undefined) : input.notes;
+  const prepared = await prepareBooking({
+    restaurantId: current.restaurantId,
+    tableId: input.tableId,
+    date: input.date,
+    time: input.time,
+    guestCount: input.guestCount,
+    ...(notes ? { notes } : {}),
+  });
+
+  await db.transaction(async (tx) => {
+    for (const key of bookingLockKeys(reservationId, current.tableId, prepared.table.id)) {
+      await advisoryXactLock(tx, key);
+    }
+
+    const fresh = await tx.orm.public.Reservation.where({ id: reservationId }).first();
+    if (!fresh) throw new ReservationError("NOT_FOUND", "Reservation not found.");
+    if (!canCancel(fresh.status, toInstant(fresh.startsAt).epochMilliseconds, Date.now(), EDITABLE_STATUSES)) {
+      throw new ReservationError("NOT_MODIFIABLE");
+    }
+
+    const others = (await tx.orm.public.Reservation.where({ tableId: prepared.table.id }).all())
+      .filter((row) => row.id !== reservationId && isBlocking(row.status))
+      .map(toInterval);
+    if (hasConflict(others, prepared.candidate)) throw new ReservationError("SLOT_TAKEN");
+
+    await tx.orm.public.Reservation.where({ id: reservationId }).update({
+      tableId: prepared.table.id,
+      startsAt: prepared.slot.startsAt,
+      endsAt: prepared.slot.endsAt,
+      guestCount: input.guestCount,
+      notes: notes ? notes : null,
+    });
+
+    // The pre-orders stay linked and follow the table.
+    if (fresh.tableId !== prepared.table.id) {
+      for (const order of await tx.orm.public.Order.where({ reservationId }).all()) {
+        await tx.orm.public.Order.where({ id: order.id }).update({ tableId: prepared.table.id });
+      }
+    }
+
+    const changed = [
+      fresh.tableId !== prepared.table.id ? "table" : null,
+      toInstant(fresh.startsAt).epochMilliseconds !== prepared.slot.startsAt.epochMilliseconds ? "time" : null,
+      fresh.guestCount !== input.guestCount ? "guests" : null,
+      (fresh.notes ?? "") !== (notes ?? "") ? "notes" : null,
+    ].filter(Boolean);
+    await tx.orm.public.AuditLog.create({
+      userId,
+      restaurantId: fresh.restaurantId,
+      action: "UPDATE",
+      entityType: "Reservation",
+      entityId: reservationId,
+      metadata: JSON.parse(
+        JSON.stringify({
+          fields: changed,
+          from: { tableId: fresh.tableId, startsAt: toInstant(fresh.startsAt).toString() },
+          to: { tableId: prepared.table.id, startsAt: prepared.slot.startsAt.toString() },
+        }),
+      ),
+    });
+  });
+
+  const [row, restaurant, table] = await Promise.all([
+    loadReservationRow(reservationId),
+    loadRestaurantRow(current.restaurantId),
+    loadTableRow(prepared.table.id),
+  ]);
+  if (!row || !restaurant || !table) throw new ReservationError("NOT_FOUND", "Reservation not found.");
+  return toPublic(row, restaurant, table, Date.now());
+}
+
+function loadReservationRow(id: string) {
+  return db.orm.public.Reservation.where({ id }).first();
 }

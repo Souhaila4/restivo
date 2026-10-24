@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import { RestaurantLoadError } from "./_components/RestaurantLoadError";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
   PlusCircle,
@@ -23,6 +24,9 @@ import { RecentActivityWidget } from "./_components/RecentActivityWidget";
 import { RestaurantQuickModals } from "./_components/RestaurantQuickModals";
 import { useRestaurantManager } from "./_context/RestaurantManagerContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { apiManagerStats } from "@/lib/manager/client";
+import { formatSlotDate, localDateInDays } from "@/lib/reservations/format";
+import { useManagerQuery } from "./_lib/use-manager-query";
 import { useRouter } from "next/navigation";
 
 export default function RestaurantDashboardPage() {
@@ -33,6 +37,8 @@ export default function RestaurantDashboardPage() {
     restaurantStatus,
     setRestaurantStatus,
     isLoadingRestaurants,
+    loadError,
+    reloadRestaurants,
   } = useRestaurantManager();
 
   const { user, isReady } = useAuth();
@@ -52,7 +58,20 @@ export default function RestaurantDashboardPage() {
 
   // Status & Date dropdown toggle
   const [statusDateDropdownOpen, setStatusDateDropdownOpen] = useState(false);
-  const [selectedDate, setSelectedDate] = useState("Today · Tuesday, September 24");
+  // Day shown by the stat cards and the reservations list: -1 yesterday, 0 today, 1 tomorrow.
+  const [dayOffset, setDayOffset] = useState(0);
+  const timezone = currentRestaurant?.timezone ?? "UTC";
+  const restaurantId = currentRestaurant?.id ?? null;
+  const date = localDateInDays(timezone, dayOffset);
+  const dayName = (offset: number) => (offset === 0 ? "Today" : offset === 1 ? "Tomorrow" : "Yesterday");
+  const dayLabel = (offset: number) =>
+    `${dayName(offset)} · ${formatSlotDate(`${localDateInDays(timezone, offset)}T12:00:00Z`, "UTC")}`;
+
+  const statsFetcher = useMemo(
+    () => (restaurantId ? (token: string) => apiManagerStats(token, restaurantId, date) : null),
+    [restaurantId, date],
+  );
+  const stats = useManagerQuery(statsFetcher);
 
   const userName =
     user?.displayName ||
@@ -66,6 +85,8 @@ export default function RestaurantDashboardPage() {
       </div>
     );
   }
+
+  if (loadError) return <RestaurantLoadError message={loadError} onRetry={reloadRestaurants} />;
 
   if (!currentRestaurant) {
     return (
@@ -95,7 +116,7 @@ export default function RestaurantDashboardPage() {
       <section className="flex flex-col xl:flex-row xl:items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1A1A1A] tracking-tight">
-            Good morning, {userName}
+            Welcome back, {userName}
           </h1>
           <p className="text-xs sm:text-sm text-[#736D65] mt-1 font-normal">
             Here&apos;s what&apos;s happening at{" "}
@@ -127,7 +148,7 @@ export default function RestaurantDashboardPage() {
               />
               <span className="font-semibold">{restaurantStatus}</span>
               <span className="text-[#B5ACA0]">|</span>
-              <span className="text-[#666059]">{selectedDate}</span>
+              <span className="text-[#666059]">{dayLabel(dayOffset)}</span>
               <ChevronDown
                 className={`w-3.5 h-3.5 text-[#8A847C] transition-transform duration-200 ${
                   statusDateDropdownOpen ? "rotate-180" : ""
@@ -163,24 +184,20 @@ export default function RestaurantDashboardPage() {
                   <div className="text-[10px] font-bold uppercase tracking-wider text-[#8C857B] px-2 py-1">
                     Select Date View
                   </div>
-                  {[
-                    "Today · Tuesday, September 24",
-                    "Tomorrow · Wednesday, September 25",
-                    "Yesterday · Monday, September 23",
-                  ].map((d) => (
+                  {[0, 1, -1].map((offset) => (
                     <button
-                      key={d}
+                      key={offset}
                       onClick={() => {
-                        setSelectedDate(d);
+                        setDayOffset(offset);
                         setStatusDateDropdownOpen(false);
                       }}
                       className={`w-full text-left px-2 py-1.5 rounded-lg text-xs transition-colors ${
-                        selectedDate === d
+                        dayOffset === offset
                           ? "font-bold text-[#B55234] bg-[#FAF0EA]/60"
                           : "text-[#3D3A36] hover:bg-[#FAF7F2]"
                       }`}
                     >
-                      {d}
+                      {dayLabel(offset)}
                     </button>
                   ))}
                 </div>
@@ -240,53 +257,47 @@ export default function RestaurantDashboardPage() {
         </div>
       </section>
 
-      {/* ─── 4 Statistic KPI Cards with Count-up Animations & Curved Sparklines ─── */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Today's reservations */}
-        <StatCard
-          icon={<CalendarDays className="w-4 h-4" />}
-          title="Today's reservations"
-          value={24}
-          trendText="+12% compared with yesterday"
-          chartColor="green"
-          chartPoints={[14, 16, 15, 19, 18, 22, 24]}
-          delay={0}
-        />
-
-        {/* Card 2: Current occupancy */}
-        <StatCard
-          icon={<Users2 className="w-4 h-4" />}
-          title="Current occupancy"
-          value={68}
-          suffix="%"
-          subText="16 / 24 tables"
-          chartColor="orange"
-          chartPoints={[35, 42, 50, 48, 58, 62, 68]}
-          delay={150}
-        />
-
-        {/* Card 3: Orders today */}
-        <StatCard
-          icon={<ShoppingBag className="w-4 h-4" />}
-          title="Orders today"
-          value={37}
-          trendText="+8% compared with yesterday"
-          chartColor="green"
-          chartPoints={[20, 24, 22, 29, 31, 34, 37]}
-          delay={300}
-        />
-
-        {/* Card 4: Revenue today */}
-        <StatCard
-          icon={<Coins className="w-4 h-4" />}
-          title="Revenue today"
-          value={1240}
-          suffix=" TND"
-          trendText="+14% compared with yesterday"
-          chartColor="orange"
-          chartPoints={[600, 750, 700, 920, 1050, 1140, 1240]}
-          delay={450}
-        />
+      {/* ─── Statistic cards: real numbers for the chosen day ─── */}
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" aria-live="polite">
+        {stats.error && !stats.data ? (
+          <p role="alert" className="sm:col-span-2 lg:col-span-4 rounded-xl border border-[#F3DFD4] bg-[#FAF0EA] px-4 py-3 text-sm text-[#B55234]">
+            {stats.error}{" "}
+            <button type="button" onClick={stats.refresh} className="font-bold underline">
+              Try again
+            </button>
+          </p>
+        ) : (
+          <>
+            <StatCard
+              icon={<CalendarDays className="w-4 h-4" />}
+              title={`${dayName(dayOffset)}'s reservations`}
+              value={stats.data?.reservationsToday ?? 0}
+              valueText={stats.data ? undefined : "..."}
+              subText="Cancelled ones excluded"
+            />
+            <StatCard
+              icon={<Users2 className="w-4 h-4" />}
+              title="Covers"
+              value={stats.data?.coversToday ?? 0}
+              valueText={stats.data ? undefined : "..."}
+              subText="Guests expected"
+            />
+            <StatCard
+              icon={<ShoppingBag className="w-4 h-4" />}
+              title="Orders to process"
+              value={stats.data?.ordersToProcess ?? 0}
+              valueText={stats.data ? undefined : "..."}
+              subText="Open pre-orders"
+            />
+            <StatCard
+              icon={<Coins className="w-4 h-4" />}
+              title="Revenue"
+              value={0}
+              valueText={stats.data ? `${stats.data.revenueToday} ${stats.data.currency}` : "..."}
+              subText="Orders not cancelled"
+            />
+          </>
+        )}
       </section>
 
       {/* ─── Main Two-Column Layout (Left: Floor Plan & Activity | Right: Reservations, Orders, Promo) ─── */}
@@ -298,7 +309,9 @@ export default function RestaurantDashboardPage() {
 
           {/* Recent Activity Cards (4 in a row) */}
           <RecentActivityWidget
-            onViewAll={() => alert("All recent activities for today loaded.")}
+            restaurantId={currentRestaurant.id}
+            timezone={timezone}
+            onViewAll={() => router.push("/mainpage/restaurants/reservations")}
           />
         </div>
 
@@ -306,16 +319,18 @@ export default function RestaurantDashboardPage() {
         <div className="lg:col-span-5 xl:col-span-4 flex flex-col gap-5">
           {/* Today's Reservations Table */}
           <ReservationsWidget
+            restaurantId={currentRestaurant.id}
+            date={date}
+            title={`${dayName(dayOffset)}'s reservations`}
             onAddReservation={() => setReservationModalOpen(true)}
-            onViewAll={() => alert("Viewing complete reservations directory.")}
+            onViewAll={() => router.push("/mainpage/restaurants/reservations")}
           />
 
           {/* Live Orders List */}
           <LiveOrdersWidget
-            onViewAll={() => alert("Viewing kitchen live orders board.")}
-            onSelectOrder={(order) =>
-              alert(`Order for ${order.table}: status is ${order.status}`)
-            }
+            restaurantId={currentRestaurant.id}
+            onViewAll={() => router.push("/mainpage/restaurants/reservations?tab=orders")}
+            onSelectOrder={() => router.push("/mainpage/restaurants/reservations?tab=orders")}
           />
 
           {/* Enhance Your Restaurant Promo Banner */}

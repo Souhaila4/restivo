@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useAuth, ApiError } from "@/contexts/AuthContext";
 import { apiSetRestaurantStatus } from "@/lib/restaurants/client";
-import { FALLBACK_RESTAURANTS, useRestaurantManager } from "../_context/RestaurantManagerContext";
+import { useRestaurantManager } from "../_context/RestaurantManagerContext";
 
 type Notice = { kind: "ok" | "error"; text: string };
 
@@ -19,9 +19,7 @@ export function PublishRestaurantButton() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
 
-  // The demo restaurant shown to accounts with no venue is not a database row.
   if (!currentRestaurant) return null;
-  if (FALLBACK_RESTAURANTS.some((row) => row.id === currentRestaurant.id)) return null;
 
   const { id, dbStatus } = currentRestaurant;
 

@@ -44,3 +44,7 @@ export const parseFloorBody = parseRestaurantBody;
 export type CreateFloorBody = z.output<typeof createFloorSchema>;
 export type UpdateFloorBody = z.output<typeof updateFloorSchema>;
 export type SaveLayoutBody = z.output<typeof saveLayoutSchema>;
+
+export const floorActiveSchema = z.object({
+  isActive: z.boolean({ error: "Choose active or inactive." }),
+});

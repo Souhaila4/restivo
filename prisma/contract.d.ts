@@ -34,9 +34,9 @@ import type {
 } from '@prisma/orm-postgres/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'6f4f5f79cbb2e5878045829a6aef3cdec3b443617e7b5322f93f2e8b900eeeb5'>;
+  StorageHashBase<'60c889555850511ad3b57db3f84aab124f850dd4db5595fd81bdf09f41da31be'>;
 export type ExecutionHash =
-  ExecutionHashBase<'aa07f03684dff45f53223e3c33d10e2b922b0f589774be74530c0b10fca568aa'>;
+  ExecutionHashBase<'ed86ef755ec08842c3c1687b3362e9584ab68bbbae17f6b3c10c7cca44597b90'>;
 export type ProfileHash =
   ProfileHashBase<'3916f444a8a17ad749191acf9e08dad97d1a327b88c2f1d45d12f240296aa8b2'>;
 
@@ -280,6 +280,12 @@ export type FieldOutputTypes = {
       readonly restaurantId: CodecTypes['pg/text@1']['output'];
       readonly updatedAt: CodecTypes['pg/timestamptz-string@1']['output'];
     };
+    readonly Favorite: {
+      readonly createdAt: CodecTypes['pg/timestamptz-temporal@1']['output'];
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly restaurantId: CodecTypes['pg/text@1']['output'];
+      readonly userId: CodecTypes['pg/text@1']['output'];
+    };
     readonly Floor: {
       readonly backgroundImageUrl: CodecTypes['pg/text@1']['output'] | null;
       readonly createdAt: CodecTypes['pg/timestamptz-temporal@1']['output'];
@@ -454,6 +460,7 @@ export type FieldOutputTypes = {
       readonly country: CodecTypes['pg/text@1']['output'] | null;
       readonly coverUrl: CodecTypes['pg/text@1']['output'] | null;
       readonly createdAt: CodecTypes['pg/timestamptz-temporal@1']['output'];
+      readonly cuisine: CodecTypes['pg/text@1']['output'] | null;
       readonly currency: CodecTypes['pg/text@1']['output'];
       readonly description: CodecTypes['pg/text@1']['output'] | null;
       readonly email: CodecTypes['pg/text@1']['output'] | null;
@@ -465,6 +472,7 @@ export type FieldOutputTypes = {
       readonly ownerId: CodecTypes['pg/text@1']['output'];
       readonly phone: CodecTypes['pg/text@1']['output'] | null;
       readonly postalCode: CodecTypes['pg/text@1']['output'] | null;
+      readonly priceLevel: CodecTypes['pg/int4@1']['output'] | null;
       readonly slug: CodecTypes['pg/text@1']['output'];
       readonly status: 'DRAFT' | 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
       readonly timezone: CodecTypes['pg/text@1']['output'];
@@ -564,6 +572,12 @@ export type FieldInputTypes = {
       readonly restaurantId: CodecTypes['pg/text@1']['input'];
       readonly updatedAt: CodecTypes['pg/timestamptz-string@1']['input'];
     };
+    readonly Favorite: {
+      readonly createdAt: CodecTypes['pg/timestamptz-temporal@1']['input'];
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly restaurantId: CodecTypes['pg/text@1']['input'];
+      readonly userId: CodecTypes['pg/text@1']['input'];
+    };
     readonly Floor: {
       readonly backgroundImageUrl: CodecTypes['pg/text@1']['input'] | null;
       readonly createdAt: CodecTypes['pg/timestamptz-temporal@1']['input'];
@@ -738,6 +752,7 @@ export type FieldInputTypes = {
       readonly country: CodecTypes['pg/text@1']['input'] | null;
       readonly coverUrl: CodecTypes['pg/text@1']['input'] | null;
       readonly createdAt: CodecTypes['pg/timestamptz-temporal@1']['input'];
+      readonly cuisine: CodecTypes['pg/text@1']['input'] | null;
       readonly currency: CodecTypes['pg/text@1']['input'];
       readonly description: CodecTypes['pg/text@1']['input'] | null;
       readonly email: CodecTypes['pg/text@1']['input'] | null;
@@ -749,6 +764,7 @@ export type FieldInputTypes = {
       readonly ownerId: CodecTypes['pg/text@1']['input'];
       readonly phone: CodecTypes['pg/text@1']['input'] | null;
       readonly postalCode: CodecTypes['pg/text@1']['input'] | null;
+      readonly priceLevel: CodecTypes['pg/int4@1']['input'] | null;
       readonly slug: CodecTypes['pg/text@1']['input'];
       readonly status: 'DRAFT' | 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
       readonly timezone: CodecTypes['pg/text@1']['input'];
@@ -847,6 +863,12 @@ export type StorageColumnTypes = {
       readonly openTime: CodecTypes['pg/text@1']['output'] | null;
       readonly restaurantId: CodecTypes['pg/text@1']['output'];
       readonly updatedAt: CodecTypes['pg/timestamptz-string@1']['output'];
+    };
+    readonly Favorite: {
+      readonly createdAt: CodecTypes['pg/timestamptz-temporal@1']['output'];
+      readonly id: CodecTypes['pg/text@1']['output'];
+      readonly restaurantId: CodecTypes['pg/text@1']['output'];
+      readonly userId: CodecTypes['pg/text@1']['output'];
     };
     readonly Floor: {
       readonly backgroundImageUrl: CodecTypes['pg/text@1']['output'] | null;
@@ -1022,6 +1044,7 @@ export type StorageColumnTypes = {
       readonly country: CodecTypes['pg/text@1']['output'] | null;
       readonly coverUrl: CodecTypes['pg/text@1']['output'] | null;
       readonly createdAt: CodecTypes['pg/timestamptz-temporal@1']['output'];
+      readonly cuisine: CodecTypes['pg/text@1']['output'] | null;
       readonly currency: CodecTypes['pg/text@1']['output'];
       readonly description: CodecTypes['pg/text@1']['output'] | null;
       readonly email: CodecTypes['pg/text@1']['output'] | null;
@@ -1033,6 +1056,7 @@ export type StorageColumnTypes = {
       readonly ownerId: CodecTypes['pg/text@1']['output'];
       readonly phone: CodecTypes['pg/text@1']['output'] | null;
       readonly postalCode: CodecTypes['pg/text@1']['output'] | null;
+      readonly priceLevel: CodecTypes['pg/int4@1']['output'] | null;
       readonly slug: CodecTypes['pg/text@1']['output'];
       readonly status: 'DRAFT' | 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
       readonly timezone: CodecTypes['pg/text@1']['output'];
@@ -1131,6 +1155,12 @@ export type StorageColumnInputTypes = {
       readonly openTime: CodecTypes['pg/text@1']['input'] | null;
       readonly restaurantId: CodecTypes['pg/text@1']['input'];
       readonly updatedAt: CodecTypes['pg/timestamptz-string@1']['input'];
+    };
+    readonly Favorite: {
+      readonly createdAt: CodecTypes['pg/timestamptz-temporal@1']['input'];
+      readonly id: CodecTypes['pg/text@1']['input'];
+      readonly restaurantId: CodecTypes['pg/text@1']['input'];
+      readonly userId: CodecTypes['pg/text@1']['input'];
     };
     readonly Floor: {
       readonly backgroundImageUrl: CodecTypes['pg/text@1']['input'] | null;
@@ -1306,6 +1336,7 @@ export type StorageColumnInputTypes = {
       readonly country: CodecTypes['pg/text@1']['input'] | null;
       readonly coverUrl: CodecTypes['pg/text@1']['input'] | null;
       readonly createdAt: CodecTypes['pg/timestamptz-temporal@1']['input'];
+      readonly cuisine: CodecTypes['pg/text@1']['input'] | null;
       readonly currency: CodecTypes['pg/text@1']['input'];
       readonly description: CodecTypes['pg/text@1']['input'] | null;
       readonly email: CodecTypes['pg/text@1']['input'] | null;
@@ -1317,6 +1348,7 @@ export type StorageColumnInputTypes = {
       readonly ownerId: CodecTypes['pg/text@1']['input'];
       readonly phone: CodecTypes['pg/text@1']['input'] | null;
       readonly postalCode: CodecTypes['pg/text@1']['input'] | null;
+      readonly priceLevel: CodecTypes['pg/int4@1']['input'] | null;
       readonly slug: CodecTypes['pg/text@1']['input'];
       readonly status: 'DRAFT' | 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
       readonly timezone: CodecTypes['pg/text@1']['input'];
@@ -1420,6 +1452,15 @@ export namespace Models {
     updatedAt: CodecTypes['pg/timestamptz-string@1']['output'];
     restaurant: public_Restaurant;
     readonly [RelationKeys]?: 'restaurant';
+  };
+  export type public_Favorite = {
+    createdAt: CodecTypes['pg/timestamptz-temporal@1']['output'];
+    id: CodecTypes['pg/text@1']['output'];
+    restaurantId: CodecTypes['pg/text@1']['output'];
+    userId: CodecTypes['pg/text@1']['output'];
+    restaurant: public_Restaurant;
+    user: public_User;
+    readonly [RelationKeys]?: 'restaurant' | 'user';
   };
   export type public_Floor = {
     backgroundImageUrl: CodecTypes['pg/text@1']['output'] | null;
@@ -1640,6 +1681,7 @@ export namespace Models {
     country: CodecTypes['pg/text@1']['output'] | null;
     coverUrl: CodecTypes['pg/text@1']['output'] | null;
     createdAt: CodecTypes['pg/timestamptz-temporal@1']['output'];
+    cuisine: CodecTypes['pg/text@1']['output'] | null;
     currency: CodecTypes['pg/text@1']['output'];
     description: CodecTypes['pg/text@1']['output'] | null;
     email: CodecTypes['pg/text@1']['output'] | null;
@@ -1651,6 +1693,7 @@ export namespace Models {
     ownerId: CodecTypes['pg/text@1']['output'];
     phone: CodecTypes['pg/text@1']['output'] | null;
     postalCode: CodecTypes['pg/text@1']['output'] | null;
+    priceLevel: CodecTypes['pg/int4@1']['output'] | null;
     slug: CodecTypes['pg/text@1']['output'];
     status: 'DRAFT' | 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
     timezone: CodecTypes['pg/text@1']['output'];
@@ -1658,6 +1701,7 @@ export namespace Models {
     website: CodecTypes['pg/text@1']['output'] | null;
     auditLogs: public_AuditLog[];
     businessHours: public_BusinessHours[];
+    favorites: public_Favorite[];
     floors: public_Floor[];
     media: public_Media[];
     membershipRequests: public_RestaurantMembershipRequest[];
@@ -1672,6 +1716,7 @@ export namespace Models {
     readonly [RelationKeys]?:
       | 'auditLogs'
       | 'businessHours'
+      | 'favorites'
       | 'floors'
       | 'media'
       | 'membershipRequests'
@@ -1758,6 +1803,7 @@ export namespace Models {
     status: 'ACTIVE' | 'SUSPENDED' | 'DELETED';
     updatedAt: CodecTypes['pg/timestamptz-string@1']['output'];
     auditLogs: public_AuditLog[];
+    favorites: public_Favorite[];
     media: public_Media[];
     membershipRequests: public_RestaurantMembershipRequest[];
     memberships: public_RestaurantMembership[];
@@ -1770,6 +1816,7 @@ export namespace Models {
     reviews: public_Review[];
     readonly [RelationKeys]?:
       | 'auditLogs'
+      | 'favorites'
       | 'media'
       | 'membershipRequests'
       | 'memberships'
@@ -1787,6 +1834,7 @@ export declare const models: {
   public: {
     AuditLog: Models.public_AuditLog;
     BusinessHours: Models.public_BusinessHours;
+    Favorite: Models.public_Favorite;
     Floor: Models.public_Floor;
     FloorObject: Models.public_FloorObject;
     Media: Models.public_Media;
@@ -1995,6 +2043,73 @@ type ContractBase = Omit<
                   readonly source: {
                     readonly namespaceId: 'public' & NamespaceId;
                     readonly tableName: 'BusinessHours';
+                    readonly columns: readonly ['restaurantId'];
+                  };
+                  readonly target: {
+                    readonly namespaceId: 'public' & NamespaceId;
+                    readonly tableName: 'Restaurant';
+                    readonly columns: readonly ['id'];
+                  };
+                },
+              ];
+            };
+            readonly Favorite: {
+              columns: {
+                readonly createdAt: {
+                  readonly nativeType: 'timestamptz';
+                  readonly codecId: 'pg/timestamptz-temporal@1';
+                  readonly nullable: false;
+                  readonly default: { readonly kind: 'function'; readonly expression: 'now()' };
+                };
+                readonly id: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly restaurantId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+                readonly userId: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: false;
+                };
+              };
+              primaryKey: { readonly columns: readonly ['id'] };
+              uniques: readonly [{ readonly columns: readonly ['userId', 'restaurantId'] }];
+              indexes: readonly [
+                {
+                  readonly name: 'Favorite_restaurantId_idx_cf3ee7d0';
+                  readonly prefix: 'Favorite_restaurantId_idx';
+                  readonly columns: readonly ['restaurantId'];
+                  readonly unique: false;
+                },
+                {
+                  readonly name: 'Favorite_userId_idx_a489d58a';
+                  readonly prefix: 'Favorite_userId_idx';
+                  readonly columns: readonly ['userId'];
+                  readonly unique: false;
+                },
+              ];
+              foreignKeys: readonly [
+                {
+                  readonly source: {
+                    readonly namespaceId: 'public' & NamespaceId;
+                    readonly tableName: 'Favorite';
+                    readonly columns: readonly ['userId'];
+                  };
+                  readonly target: {
+                    readonly namespaceId: 'public' & NamespaceId;
+                    readonly tableName: 'User';
+                    readonly columns: readonly ['id'];
+                  };
+                },
+                {
+                  readonly source: {
+                    readonly namespaceId: 'public' & NamespaceId;
+                    readonly tableName: 'Favorite';
                     readonly columns: readonly ['restaurantId'];
                   };
                   readonly target: {
@@ -3398,13 +3513,18 @@ type ContractBase = Omit<
                   readonly nullable: false;
                   readonly default: { readonly kind: 'function'; readonly expression: 'now()' };
                 };
+                readonly cuisine: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
                 readonly currency: {
                   readonly nativeType: 'text';
                   readonly codecId: 'pg/text@1';
                   readonly nullable: false;
                   readonly default: {
                     readonly kind: 'literal';
-                    readonly value: DefaultLiteralValue<'pg/text@1', 'EUR'>;
+                    readonly value: DefaultLiteralValue<'pg/text@1', 'TND'>;
                   };
                 };
                 readonly description: {
@@ -3455,6 +3575,11 @@ type ContractBase = Omit<
                 readonly postalCode: {
                   readonly nativeType: 'text';
                   readonly codecId: 'pg/text@1';
+                  readonly nullable: true;
+                };
+                readonly priceLevel: {
+                  readonly nativeType: 'int4';
+                  readonly codecId: 'pg/int4@1';
                   readonly nullable: true;
                 };
                 readonly slug: {
@@ -4187,6 +4312,7 @@ type ContractBase = Omit<
       readonly namespace: 'public' & NamespaceId;
       readonly model: 'BusinessHours';
     };
+    readonly Favorite: { readonly namespace: 'public' & NamespaceId; readonly model: 'Favorite' };
     readonly Floor: { readonly namespace: 'public' & NamespaceId; readonly model: 'Floor' };
     readonly FloorObject: {
       readonly namespace: 'public' & NamespaceId;
@@ -4378,6 +4504,62 @@ type ContractBase = Omit<
                 readonly openTime: { readonly column: 'openTime' };
                 readonly restaurantId: { readonly column: 'restaurantId' };
                 readonly updatedAt: { readonly column: 'updatedAt' };
+              };
+            };
+          };
+          readonly Favorite: {
+            readonly fields: {
+              readonly createdAt: {
+                readonly nullable: false;
+                readonly type: {
+                  readonly kind: 'scalar';
+                  readonly codecId: 'pg/timestamptz-temporal@1';
+                };
+              };
+              readonly id: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly restaurantId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+              readonly userId: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
+            };
+            readonly relations: {
+              readonly restaurant: {
+                readonly to: {
+                  readonly namespace: 'public' & NamespaceId;
+                  readonly model: 'Restaurant';
+                };
+                readonly cardinality: 'N:1';
+                readonly nullable: false;
+                readonly on: {
+                  readonly localFields: readonly ['restaurantId'];
+                  readonly targetFields: readonly ['id'];
+                };
+              };
+              readonly user: {
+                readonly to: { readonly namespace: 'public' & NamespaceId; readonly model: 'User' };
+                readonly cardinality: 'N:1';
+                readonly nullable: false;
+                readonly on: {
+                  readonly localFields: readonly ['userId'];
+                  readonly targetFields: readonly ['id'];
+                };
+              };
+            };
+            readonly storage: {
+              readonly table: 'Favorite';
+              readonly namespaceId: 'public';
+              readonly fields: {
+                readonly createdAt: { readonly column: 'createdAt' };
+                readonly id: { readonly column: 'id' };
+                readonly restaurantId: { readonly column: 'restaurantId' };
+                readonly userId: { readonly column: 'userId' };
               };
             };
           };
@@ -5663,6 +5845,10 @@ type ContractBase = Omit<
                   readonly codecId: 'pg/timestamptz-temporal@1';
                 };
               };
+              readonly cuisine: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
+              };
               readonly currency: {
                 readonly nullable: false;
                 readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
@@ -5707,6 +5893,10 @@ type ContractBase = Omit<
                 readonly nullable: true;
                 readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
               };
+              readonly priceLevel: {
+                readonly nullable: true;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/int4@1' };
+              };
               readonly slug: {
                 readonly nullable: false;
                 readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
@@ -5747,6 +5937,17 @@ type ContractBase = Omit<
                 readonly to: {
                   readonly namespace: 'public' & NamespaceId;
                   readonly model: 'BusinessHours';
+                };
+                readonly cardinality: '1:N';
+                readonly on: {
+                  readonly localFields: readonly ['id'];
+                  readonly targetFields: readonly ['restaurantId'];
+                };
+              };
+              readonly favorites: {
+                readonly to: {
+                  readonly namespace: 'public' & NamespaceId;
+                  readonly model: 'Favorite';
                 };
                 readonly cardinality: '1:N';
                 readonly on: {
@@ -5880,6 +6081,7 @@ type ContractBase = Omit<
                 readonly country: { readonly column: 'country' };
                 readonly coverUrl: { readonly column: 'coverUrl' };
                 readonly createdAt: { readonly column: 'createdAt' };
+                readonly cuisine: { readonly column: 'cuisine' };
                 readonly currency: { readonly column: 'currency' };
                 readonly description: { readonly column: 'description' };
                 readonly email: { readonly column: 'email' };
@@ -5891,6 +6093,7 @@ type ContractBase = Omit<
                 readonly ownerId: { readonly column: 'ownerId' };
                 readonly phone: { readonly column: 'phone' };
                 readonly postalCode: { readonly column: 'postalCode' };
+                readonly priceLevel: { readonly column: 'priceLevel' };
                 readonly slug: { readonly column: 'slug' };
                 readonly status: { readonly column: 'status' };
                 readonly timezone: { readonly column: 'timezone' };
@@ -6356,6 +6559,17 @@ type ContractBase = Omit<
                   readonly targetFields: readonly ['userId'];
                 };
               };
+              readonly favorites: {
+                readonly to: {
+                  readonly namespace: 'public' & NamespaceId;
+                  readonly model: 'Favorite';
+                };
+                readonly cardinality: '1:N';
+                readonly on: {
+                  readonly localFields: readonly ['id'];
+                  readonly targetFields: readonly ['userId'];
+                };
+              };
               readonly media: {
                 readonly to: {
                   readonly namespace: 'public' & NamespaceId;
@@ -6676,6 +6890,14 @@ type ContractBase = Omit<
             readonly column: 'updatedAt';
             readonly namespace: 'public';
             readonly table: 'BusinessHours';
+          };
+        },
+        {
+          readonly onCreate: { readonly id: 'ulid'; readonly kind: 'generator' };
+          readonly ref: {
+            readonly column: 'id';
+            readonly namespace: 'public';
+            readonly table: 'Favorite';
           };
         },
         {

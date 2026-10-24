@@ -64,15 +64,22 @@ Le contexte géographique visé semble être la **Tunisie** : devise par défaut
 | Équipe : demandes d'adhésion du personnel, acceptation / refus | ✅ Fonctionnelle | `/api/staff/join`, `/api/restaurants/:id/staff/*` |
 | Assistant IA du gérant (lecture seule, via Groq) | ✅ Fonctionnelle (clé API requise) | `/api/restaurants/:id/ai`, `lib/ai/*` |
 | Journal d'audit des actions | ✅ Écrit côté serveur, ❌ aucune interface de consultation | Table `AuditLog` |
-| Modification de la fiche restaurant après création | ⚠️ Locale uniquement (pas d'endpoint `PATCH`) | `RestaurantProfileModal.tsx` |
+| Fiche restaurant modifiable (nom, contact, adresse, devise, fuseau, cuisine, niveau de prix 1 à 4, logo et couverture par URL) | ✅ Fonctionnelle, enregistrée en base (voir §9) | `PATCH /api/restaurants/:id`, `RestaurantProfileModal.tsx`, `ProfileFields.tsx` |
+| Horaires d'ouverture modifiables, y compris de nuit (ex. 12:00 à 03:00) | ✅ Fonctionnelle (voir §9) | `GET` et `PUT /api/restaurants/:id/hours`, `HoursEditor.tsx`, `lib/restaurants/hours.ts` |
+| Activation ou désactivation d'un étage (refusée s'il porte des réservations à venir ou s'il est le dernier étage qui garde le restaurant réservable) | ✅ Fonctionnelle | `PATCH /api/restaurants/:id/floors/:floorId/active`, `lib/floors/active.ts` |
+| Rôle MANAGER : promotion et retrait d'un membre, réservés à l'OWNER | ✅ Fonctionnelle | `PATCH /api/restaurants/:id/staff/:membershipId/role`, `TeamTable.tsx`, `lib/staff/roles.ts` |
 | Espace client (accueil, recherche, plan en lecture seule, réservation, précommande, menu en livre) | ✅ Fonctionnelle (V1, voir §9) | `/api/discover/*`, `/api/reservations/*`, `/api/orders`, `app/mainpage/{explore,reservations,orders}` |
-| Tableau de bord gérant (commandes en direct, réservations, activité) | ⚠️ Widgets avec données statiques | `restaurants/_components/*Widget.tsx` |
+| Tableau de bord gérant (cartes de stats, réservations du jour, commandes en direct, activité récente) | ✅ Fonctionnelle : données réelles, rafraîchies toutes les 30 s (le plan de salle du tableau de bord reste une maquette) | `/api/restaurants/:id/{stats,reservations,orders,activity}`, `restaurants/_components/*Widget.tsx` |
+| Réservations et commandes côté gérant (liste par jour, filtres, changements de statut, annulation en cascade) | ✅ Fonctionnelle (voir §4.2 f) | `/mainpage/restaurants/reservations`, `PATCH /api/restaurants/:id/{reservations,orders}/:id/status` |
+| Notifications du client (cloche, carte « Your next reservation ») | ✅ Fonctionnelle (voir §9) | `/api/notifications`, `NotificationBell.tsx`, `NextReservationCard.tsx` |
 | Tableau de service du personnel (commandes) | ⚠️ Données statiques en mémoire | `staff/_lib/board.ts` |
-| Favoris et notifications du client | ⏳ Pas d'implémentation (page Favoris vide) | `app/mainpage/favorites` |
+| Favoris du client (cœur sur les cartes et la fiche, page *Favorites*) | ✅ Fonctionnelle | `GET` et `POST /api/favorites`, `/api/favorites/:restaurantId`, `FavoriteButton.tsx`, `app/mainpage/favorites` |
+| Avis du client (note de 1 à 5, commentaire, note moyenne sur les cartes et la fiche) | ✅ Fonctionnelle (voir §9) | `POST /api/reservations/:id/review`, `GET /api/discover/restaurants/:id/reviews`, `ReviewForm.tsx`, `ReviewsSection.tsx` |
+| Modification d'une réservation à venir (date, heure, table, invités, notes) | ✅ Fonctionnelle (voir §9) | `PATCH /api/reservations/:id`, `ChangeReservationFlow.tsx`, bouton *Change* de `/mainpage/reservations` |
 | Connexion Google / Apple | ⏳ Boutons factices (`console.log`) | `SocialAuthButtons.tsx` |
 | Mode hors ligne (PWA) | ✅ Service Worker Serwist | `app/sw.ts`, `next.config.ts` |
 
-> Le schéma de base de données prévoit déjà les réservations, commandes, avis, notifications et médias, mais **aucune route API ne les exploite encore**.
+> Réservations, commandes, notifications, avis et favoris sont exploités par l'API. Reste sans route : les médias (`Media`).
 
 ---
 
@@ -148,14 +155,22 @@ restivo-V1-main/
 │   │   ├── auth/                # signup, signin, signout, refresh, me, profile
 │   │   ├── restaurants/         # liste/création + sous-ressources par restaurant
 │   │   │   └── [restaurantId]/
-│   │   │       ├── floors/      # CRUD étages, /layout (plan), /duplicate, /reorder
+│   │   │       ├── route.ts     # PATCH : modification de la fiche restaurant
+│   │   │       ├── hours/       # GET et PUT des horaires d'ouverture (nuit comprise)
+│   │   │       ├── floors/      # CRUD étages, /layout (plan), /duplicate, /reorder, [floorId]/active (activer ou désactiver)
 │   │   │       ├── menu/        # menu, categories/, items/
 │   │   │       ├── promotions/  # CRUD promotions
-│   │   │       ├── staff/       # équipe + requests/[requestId] (accepter/refuser)
+│   │   │       ├── reservations/ # liste du gérant (jour, plage, statut) + [reservationId]/status
+│   │   │       ├── orders/      # liste des précommandes + [orderId]/status
+│   │   │       ├── stats/       # compteurs du jour (réservations, couverts, commandes, chiffre d'affaires)
+│   │   │       ├── activity/    # derniers événements réservations/commandes (AuditLog)
+│   │   │       ├── staff/       # équipe + requests/[requestId] (accepter/refuser) + [membershipId]/role (MANAGER ⇄ STAFF, OWNER seulement)
 │   │   │       └── ai/          # chat avec l'assistant IA
-│   │   ├── discover/restaurants/ # côté client : liste, fiche, disponibilités, menu publié
-│   │   ├── reservations/        # créer, lister, annuler, et /checkout (réservation + précommande)
+│   │   ├── discover/restaurants/ # côté client : liste (filtres cuisine et prix), fiche, disponibilités, menu publié, [restaurantId]/reviews
+│   │   ├── reservations/        # créer, lister, annuler, et /checkout (réservation + précommande) ; [reservationId] : GET, PATCH (modifier) ; /review (avis)
+│   │   ├── favorites/           # favoris du client : GET, POST, et [restaurantId]
 │   │   ├── orders/              # précommandes du client (POST, GET)
+│   │   ├── notifications/       # notifications du client : GET, et POST /read (une ou toutes)
 │   │   ├── staff/join/          # côté employé : tableau d'adhésion + envoi de demande
 │   │   └── time/                # renvoie l'heure serveur (utilitaire)
 │   │
@@ -165,22 +180,23 @@ restivo-V1-main/
 │   └── mainpage/                # ── APPLICATION CONNECTÉE ──
 │       ├── layout.tsx           # Shell persistant (sidebar + topnav selon la section)
 │       ├── page.tsx             # Accueil client (restaurants publiés, via /api/discover)
-│       ├── _components/         # Composants client : cartes resto, réservation, plan, sidebar…
+│       ├── _components/         # Composants client : cartes resto, réservation, ChangeReservationFlow, FavoriteButton, ReviewForm, ReviewsSection, plan, sidebar…
 │       │   └── book/            # Livre du menu : MenuBook, MenuBookDialog, pages, useMediaQuery
 │       ├── profile/             # Profil utilisateur (connecté à l'API)
 │       ├── explore/             # Recherche + fiche restaurant [restaurantId] (réservation, menu)
 │       ├── reservations/        # Mes réservations, annulation, « Pre-order meals »
 │       ├── orders/              # Mes précommandes
-│       ├── favorites/           # Page vide « à venir »
+│       ├── favorites/           # Mes restaurants favoris
 │       │
 │       ├── restaurants/         # Espace PROPRIÉTAIRE / GÉRANT
 │       │   ├── page.tsx         # Tableau de bord (stats + widgets)
 │       │   ├── _context/RestaurantManagerContext.tsx  # Restaurant courant, modales
-│       │   ├── _components/     # Sidebar, TopNav, AddRestaurantModal, widgets…
+│       │   ├── _components/     # Sidebar, TopNav, AddRestaurantModal, widgets, HoursEditor, ProfileFields…
 │       │   ├── tables/          # Éditeur de plan de salle
 │       │   │   ├── _lib/use-floors.ts            # Hook : appels API étages
 │       │   │   └── _components/floor-plan/       # Canvas, toolbar, objets SVG, géométrie
 │       │   ├── menu/            # Gestion du menu, catégories, promotions, aperçu
+│       │   ├── reservations/    # Réservations et commandes du gérant (onglets), polling 30 s
 │       │   ├── staff/           # Équipe + demandes en attente
 │       │   └── ai/              # Chat « AI Manager »
 │       │
@@ -195,15 +211,19 @@ restivo-V1-main/
 ├── lib/                         # ── LOGIQUE MÉTIER (organisée par domaine) ──
 │   ├── db.ts                    # Singleton Prisma 8 (PostgreSQL)
 │   ├── auth/                    # JWT, cookies, mots de passe, rôles, erreurs, validation
-│   ├── restaurants/             # Accès, service, slug, sérialisation, erreurs
-│   ├── floors/                  # Service étages/plan, conversion éditeur ⇄ BDD
+│   ├── restaurants/             # Accès, service, slug, sérialisation, erreurs, horaires (hours.ts), niveau de prix (price-level.ts)
+│   ├── floors/                  # Service étages/plan, conversion éditeur ⇄ BDD, activation d'un étage (active.ts)
 │   ├── menu/                    # Service menu/catégories/plats/promotions, ordre (reorder.ts), aperçu (preview-view.ts)
 │   ├── menu-book/               # Pagination pure du livre (paginate.ts, testée)
 │   ├── discover/                # Recherche et fiche publiques des restaurants
 │   ├── reservations/            # Créneaux, règles, réservation, checkout unique, annulation
 │   ├── orders/                  # Précommandes, prix en entiers (pricing.ts), panier, menu commandable
 │   ├── locks.ts                 # Verrous consultatifs PostgreSQL (par transaction)
-│   ├── staff/                   # Demandes d'adhésion, roster (équipe)
+│   ├── manager/                 # Côté gérant : listes, changements de statut, stats, activité, annulation attribuée
+│   ├── notifications/           # Notifications du client (création dans la transaction métier, liste, lecture)
+│   ├── favorites/               # Favoris du client : service et client HTTP
+│   ├── reviews/                 # Avis : règles pures (rules.ts), service, validation, client HTTP
+│   ├── staff/                   # Demandes d'adhésion, roster (équipe), rôles (roles.ts)
 │   └── ai/                      # Boucle d'outils LLM, prompt, outils, suggestions
 │       └── tools/               # Registre sécurisé + outils get_restaurant/floors/menu/staff
 │
@@ -395,6 +415,28 @@ flowchart TD
 - Les balises `<think>…</think>` éventuelles du modèle sont retirées de la réponse.
 - Le fil de discussion vit uniquement en mémoire : il est perdu au rechargement de la page.
 
+#### f) Réservations et commandes côté gérant
+
+1. Le gérant ouvre `/mainpage/restaurants/reservations` (onglets *Reservations* et *Orders*) : liste du jour par défaut, sélecteur de date, filtres de statut, rafraîchissement automatique toutes les 30 s (simple polling, sans SSE).
+2. Chaque ligne affiche les seuls boutons permis par la règle de transition, calculés côté serveur (`actions`) à l'instant de la requête. *Cancel* et *No-show* demandent une confirmation dans la page.
+3. `PATCH …/reservations/:id/status` ou `PATCH …/orders/:id/status` ouvre **une transaction**, prend le verrou consultatif `reservation:<id>` (le même que l'annulation et la commande du client), relit la ligne, applique la règle pure (`lib/reservations/transitions.ts`, `lib/orders/transitions.ts`), écrit l'`AuditLog` et la `Notification` du client, puis valide. Une règle refusée donne un 409 (`INVALID_TRANSITION`, `TOO_EARLY`, `TOO_LATE`, `RESERVATION_CLOSED`), une réservation d'un autre restaurant un 404.
+
+| Réservation | Règle |
+|---|---|
+| `CONFIRMED` → `SEATED` | de 30 minutes avant le début jusqu'à la fin du créneau |
+| `SEATED` → `COMPLETED` | à tout moment |
+| `CONFIRMED` → `NO_SHOW` | au plus tôt 15 minutes après le début |
+| `CONFIRMED` → `CANCELLED` | par le gérant, à tout moment avant `SEATED` ; annule en cascade les précommandes `PENDING` et `CONFIRMED` dans la même transaction |
+| `COMPLETED`, `CANCELLED`, `NO_SHOW` | états finaux, plus aucun changement |
+
+| Commande | Règle |
+|---|---|
+| `PENDING` → `CONFIRMED` → `PREPARING` → `READY` → `DELIVERED` | une étape à la fois |
+| → `CANCELLED` | possible tant que la commande n'est pas livrée |
+| Réservation `CANCELLED` ou `NO_SHOW` | la commande ne peut plus avancer, mais peut encore être annulée |
+
+`COMPLETED`, `NO_SHOW` et `CANCELLED` libèrent la table : la disponibilité ne bloque que `PENDING`, `CONFIRMED` et `SEATED` (`BLOCKING_STATUSES`). Les compteurs du tableau de bord (`GET …/stats`) sont calculés en entiers sur le jour local du restaurant : réservations et couverts hors annulées, commandes à traiter (ouvertes, du jour ou d'avant), chiffre d'affaires des commandes non annulées rattachées au jour de leur réservation (sinon à leur création).
+
 ### 4.3 Authentification, rôles et sécurité
 
 #### Mécanisme des jetons
@@ -455,7 +497,8 @@ Source : `prisma/contract.prisma`. Toutes les clés primaires sont des **ULID** 
 |---|---|---|
 | `User` | Compte de connexion | `email` (unique), `passwordHash`, `status`, `managementRole` |
 | `Profile` | Informations personnelles (1-1 avec User) | `firstName`, `lastName`, `displayName`, `phone`, `bio`, `avatarUrl` |
-| `Restaurant` | Établissement | `ownerId`, `slug` (unique), coordonnées, `currency`, `timezone`, `status` |
+| `Restaurant` | Établissement | `ownerId`, `slug` (unique), coordonnées, `currency` (défaut `TND`), `timezone`, `status`, `cuisine`, `priceLevel` (1 à 4), `logoUrl`, `coverUrl` |
+| `Favorite` | Restaurant favori d'un client | `userId`, `restaurantId`, unique `(userId, restaurantId)` |
 | `RestaurantMembership` | Lien utilisateur ↔ restaurant avec un rôle | `role` (OWNER/MANAGER/STAFF), `status`, unique `(userId, restaurantId)` |
 | `RestaurantMembershipRequest` | Demande d'adhésion d'un employé | `status`, `message`, `reviewedById`, `reviewedAt` |
 | `BusinessHours` | Horaires (7 lignes par restaurant) | `dayOfWeek` (0 = dimanche), `isClosed`, `openTime`, `closeTime` |
@@ -471,7 +514,7 @@ Source : `prisma/contract.prisma`. Toutes les clés primaires sont des **ULID** 
 | `Media` | Métadonnées de fichiers (stockés ailleurs) | `url`, `storageKey`, `mimeType` |
 | `AuditLog` | Historique des actions | `action`, `entityType`, `entityId`, `metadata` (JSON) |
 
-Les tables en *italique* dans le diagramme ci-dessous ne sont **pas encore utilisées** par l'API : `Reservation`, `Order`, `OrderItem`, `Review`, `Notification`, `Media`.
+Les tables en *italique* dans le diagramme ci-dessous ne sont **pas encore utilisées** par l'API : `Media`. `Favorite` a été ajoutée par la migration `20261024T0051`.
 
 ### Diagramme entité-relation
 
@@ -522,8 +565,8 @@ erDiagram
 
 ### Migrations
 
-- Il n'existe qu'une migration, `migrations/app/20260924T2101_init/`, qui produit le contrat `08e8c9…`.
-- Or `migrations/app/refs/db.json` et `prisma/contract.json` pointent vers un contrat **plus récent** (`6f4f5f…`), dont l'instantané existe dans `migrations/snapshots/`. **Aucune migration** ne fait le lien entre les deux : la base a peut-être été mise à jour directement, sans migration versionnée **(incertain)**. À vérifier avant tout déploiement.
+- Trois migrations versionnées, toutes appliquées : `20260924T2101_init` (contrat `08e8c9…`), `20261017T2311_add_user_management_role` (contrat `6f4f5f…`) et `20261024T0051_restaurant_profile_favorites` (contrat `60c889…`).
+- `20261024T0051_restaurant_profile_favorites` est purement additive : création de la table `Favorite` (clés étrangères en cascade), ajout des colonnes `cuisine` et `priceLevel` (avec une contrainte `CHECK` de 1 à 4), et défaut de `Restaurant.currency` passé de `EUR` à `TND`. Ce défaut ne s'applique qu'aux futures insertions : aucune valeur existante n'est modifiée. `refs/db.json`, `prisma/contract.json` et la base pointent vers le même contrat (`60c889…`).
 
 ---
 
@@ -630,7 +673,14 @@ npm test
 | `lib/discover/search.test.ts` | Recherche par nom ou ville, insensible à la casse et aux accents |
 | `lib/reservations/rules.test.ts` | Chevauchement, capacité, horaires, fuseau horaire, délai minimum et maximum, annulation, accès |
 | `lib/orders/pricing.test.ts` | Tarification en entiers (TND = 3 décimales), promotions, totaux |
+| `lib/orders/price-input.test.ts` | Validation des prix de plats saisis par le gérant (chaîne ou nombre, décimales de la devise, refus des arrondis, formats invalides) |
+| `lib/menu-book/paginate.test.ts` | Pagination du livre du menu (pages, doubles pages, ancres de lecture) |
+| `lib/menu/reorder.test.ts` | Réordonnancement ↑ ↓ des catégories et des plats (bords, trous, égalités) |
+| `lib/reservations/transitions.test.ts` | Transitions de réservation : fenêtre pour installer les clients, délai du no-show, annulation, états finaux, boutons disponibles |
+| `lib/orders/transitions.test.ts` | Transitions de commande : une étape à la fois, annulation jusqu'à la livraison, blocage par une réservation annulée ou manquée |
+| `lib/reservations/stats.test.ts` | Jour local d'un restaurant (fuseau), réservations, couverts, commandes à traiter et chiffre d'affaires en entiers |
 | `lib/reservations/service.integration.test.ts` | Réservations et précommandes de bout en bout (concurrence, refus, cascade). **Sautée** sans `DATABASE_URL` ou sans serveur ; `npm run test:integration` la lance contre le serveur de dev et nettoie ses données |
+| `lib/manager/manager.integration.test.ts` | Côté gérant de bout en bout : accès (401, 403, 404), listes filtrées, transitions valides et refusées (409), no-show, cascade d'annulation, annulation attribuée au restaurant, notifications créées puis lues, stats en TND, activité. Même condition d'exécution ; elle déplace dans le temps ses propres réservations de test et supprime tout ce qu'elle crée par identifiants exacts |
 
 > La couverture reste **partielle** : les règles pures (publication, réservation, tarification, recherche) et le parcours réservation/commande sont testés, mais les composants, l'authentification complète et les autres services métier ne le sont pas. Il n'y a pas de tests de bout en bout dans un navigateur.
 
@@ -650,11 +700,11 @@ Il n'y a pas de Prettier configuré, pas de hook Git (Husky) et pas de pipeline 
 
 ### Fonctionnalités incomplètes
 
-1. **Réservations et commandes côté gérant et personnel** : le client peut réserver et précommander (voir §9), mais les widgets du tableau de bord gérant et le tableau de service du personnel affichent encore des **données statiques** (voir §10). Les avis (`Review`) n'ont pas d'implémentation.
-2. **Espace client** : dynamique depuis la V1 (voir §9). Restent factices les favoris et les notifications. Le nom « Ahmed » subsiste dans des maquettes côté gérant et personnel (`RestaurantTopNav`, `ReservationsWidget`, `FloorPlanView`, `staff/_lib/board.ts`).
-3. **Modification d'un restaurant** : il n'existe pas de `PATCH /api/restaurants/:id`. Les modifications faites dans `RestaurantProfileModal` restent dans l'état React et sont perdues au rechargement. Le passage de `DRAFT` à `ACTIVE` se fait désormais par `PATCH /api/restaurants/:id/status` (bouton « Publish restaurant »).
-4. **Notifications, médias et avis** : tables présentes, aucune implémentation. L'upload d'images se limite à des URL ou à des photos prédéfinies.
-5. **Rôle MANAGER** : prévu dans le modèle, mais aucun parcours ne permet de nommer un gérant. Seuls OWNER (à la création) et STAFF (par adhésion) sont attribués.
+1. **Personnel et plan en direct** : les widgets du tableau de bord gérant (stats, réservations, commandes, activité) sont réels, mais le plan de salle du tableau de bord (`FloorPlanView`) et le tableau de service du personnel (`staff/_lib/board.ts`) affichent encore des **données statiques** (voir §10).
+2. **Espace client** : dynamique depuis la V1 (voir §9). Le nom « Ahmed » subsiste dans des maquettes côté gérant et personnel (`RestaurantTopNav`, `ReservationsWidget`, `FloorPlanView`, `staff/_lib/board.ts`).
+3. **Fiche restaurant** : la modification est enregistrée (`PATCH /api/restaurants/:id`), mais le logo et la couverture se saisissent par URL, sans envoi de fichier.
+4. **Médias** : la table `Media` n'est pas utilisée. L'upload d'images se limite à des URL ou à des photos prédéfinies.
+5. **Rôles de l'équipe** : l'OWNER peut nommer ou retirer un MANAGER, mais le rôle `STAFF` ne peut encore ni lister ni changer le statut des réservations et commandes (voir §10).
 6. **OAuth Google / Apple** : boutons factices.
 7. **Historique du chat IA** : non persisté.
 8. **Menu côté gérant** : réordonnancement par boutons ↑ ↓ uniquement (pas de glisser-déposer), pas d'étiquettes (végétarien, épicé…), images de plats par URL. Le réglage « Published » du panneau *Menu settings* publie sans l'avertissement de menu vide de l'en-tête, et le formulaire de promotion se vide même quand le serveur refuse la saisie.
@@ -666,7 +716,6 @@ Il n'y a pas de Prettier configuré, pas de hook Git (Husky) et pas de pipeline 
 - **Opérations non atomiques** : `reorderFloor` (deux `update` hors transaction, alors que le réordonnancement des catégories et plats du menu est, lui, transactionnel), `createFloor` (calcul de `level`/`sortOrder` par comptage, sujet aux conditions de course) et `writeAudit` (hors de la transaction métier dans `floors` et `menu`).
 - **Couplage `lib` → `app`** : `lib/floors/*` et `lib/ai/tools/floors` importent des types et constantes depuis `app/mainpage/restaurants/tables/_components/floor-plan/`. Le domaine dépend donc de l'UI : `floor-object.ts` et `constants.ts` seraient mieux placés dans `lib/floors/`.
 - **Duplication** : `handleResponse` est recopié dans chaque `client.ts`, et `parse*Body` dans plusieurs fichiers de validation. Un petit utilitaire `lib/http` les factoriserait.
-- **Migrations désynchronisées** : le contrat courant (`6f4f5f…`) n'a pas de migration correspondante (voir §5).
 - **Dépendances en pré-version** : Prisma 8 RC, plus `@prisma/client` v7 qui semble inutilisé.
 - **Manifeste PWA non personnalisé** : `name: "PWA Serwist Lab"`, couleurs violettes sans rapport avec la charte Restivo.
 - **README générique** (modèle `create-next-app`), pas de `.env.example`, pas de scripts pour les migrations ou le seed.
@@ -720,6 +769,13 @@ Toutes ces routes exigent un compte `ACTIVE` (Bearer) : l'identité vient toujou
 - **Confirmation unique** : le parcours se termine par une seule étape de revue, puis un seul appel `POST /api/reservations/checkout` (`lib/reservations/checkout.ts`). La réservation et la précommande sont créées dans la même transaction, avec le même verrou de table : si un plat est refusé ou si le créneau est pris, rien n'est enregistré. Sans plat choisi, l'appel ne crée que la réservation. `POST /api/reservations` seul reste disponible.
 - **Côté gérant** : les prix des plats sont des chaînes décimales (`"18.500"`) validées selon les décimales de la devise du restaurant (`normalizePrice`, `lib/orders/pricing.ts`) ; l'API accepte encore un nombre. Catégories et plats se réordonnent par `POST …/categories/:id/move` et `POST …/items/:id/move` (`{direction: "up"|"down"}`), en transaction avec journal d'audit. L'interrupteur Published/Draft de l'en-tête publie ou dépublie le menu ; publier sans plat disponible demande une confirmation dans la page.
 
+### Notifications du client
+
+- Chaque changement de statut fait par le gérant crée, dans la **même transaction**, une `Notification` (type `RESERVATION` ou `ORDER`, titre et message en anglais, `data` = `{ reservationId, orderId, status }`, expiration 30 jours). Une notification existe donc si et seulement si le changement a eu lieu.
+- `GET /api/notifications` renvoie les 30 plus récentes et le nombre de non lues ; `POST /api/notifications/read` marque `{ ids }` ou `{ all: true }`, uniquement parmi les notifications de l'utilisateur connecté (l'identité vient du JWT).
+- La cloche de la barre du haut (`NotificationBell`) affiche le compteur, la liste déroulante, « Mark all as read » et un état vide, et se rafraîchit toutes les 60 s. Un clic ouvre la page Reservations ou Orders.
+- L'accueil affiche la carte « Your next reservation » (prochaine réservation active : restaurant, date, heure, table, code), masquée s'il n'y en a pas. Les pages Reservations et Orders se rafraîchissent toutes les 30 s et indiquent « Cancelled by the restaurant » quand l'annulation vient du gérant (déduite de l'`AuditLog`).
+
 ### Règles métier
 
 - **Visibilité** : un restaurant est visible s'il est `ACTIVE` et possède au moins un étage actif contenant au moins une table active (même règle que la publication, `lib/restaurants/publish.ts`).
@@ -731,26 +787,33 @@ Toutes ces routes exigent un compte `ACTIVE` (Bearer) : l'identité vient toujou
 - **Prix** : recalculés côté serveur, en entiers selon les décimales de la devise (TND = 3), jamais en flottants. Tout prix envoyé par le client est ignoré. Promotion par unité : `PERCENTAGE` = pourcentage du prix, `FIXED_AMOUNT` = montant retiré par unité (plafonné au prix), une seule promotion par plat (la meilleure), sans cumul. `OrderItem.priceSnapshot` est le prix avant promotion et `Order.discount` la remise totale.
 - **Annulation en cascade** : annuler une réservation passe en `CANCELLED` ses précommandes `PENDING` ou `CONFIRMED`, dans la même transaction (même verrou que la création de commande).
 
+### Horaires de nuit, avis, favoris et modification de réservation
+
+- **Horaires de nuit** : une fermeture antérieure à l'ouverture (12:00 à 03:00) signifie « ferme le lendemain » ; l'éditeur l'indique (*closes the next day*). La fenêtre appartient au jour d'ouverture, et un créneau après minuit est rattaché à la fenêtre de la veille. Fermeture égale à l'ouverture : refusée (pas de mode 24 h). Tout est calculé en instants dans le fuseau du restaurant (`lib/reservations/rules.ts`, `lib/restaurants/hours.ts`).
+- **Avis** : uniquement sur sa propre réservation `COMPLETED`, une seule fois (`NOT_OWNER`, `NOT_COMPLETED`, `ALREADY_REVIEWED`). Note de 1 à 5, commentaire de 1000 caractères au plus, publié aussitôt. Le bouton *Leave a review* est sur `/mainpage/reservations`. La note moyenne (une décimale) et le nombre d'avis s'affichent sur les cartes et la fiche (`lib/reviews/rules.ts`).
+- **Favoris** : un restaurant n'est favori qu'une fois par utilisateur (unique `(userId, restaurantId)`). Le cœur bascule l'état ; la page *Favorites* liste les restaurants favoris. L'identité vient du JWT.
+- **Modification d'une réservation** : seulement `PENDING` ou `CONFIRMED` et avant le début du créneau. Le changement (date, heure, table, invités, notes) suit les règles d'une nouvelle réservation (horaires, capacité, délai, chevauchement). Le code et les précommandes sont conservés. Les verrous de la réservation et des deux tables sont pris dans un ordre fixe, pour éviter les blocages croisés. Le bouton *Change* ouvre `ChangeReservationFlow` avec les valeurs actuelles.
+- **Fiche enrichie** : `cuisine` (texte libre, 60 caractères au plus), `priceLevel` de 1 à 4, `logoUrl`, `coverUrl`. L'accueil et la recherche filtrent par cuisine et par niveau de prix.
+- **Étages** : un étage qui porte une réservation à venir ou en cours reste actif, tout comme le dernier étage qui garde un restaurant publié réservable.
+
 ### Limites connues
 
-- **Horaires de nuit non gérés** : un jour dont la fermeture est antérieure ou égale à l'ouverture (par exemple 12:00 à 03:00) n'est jamais réservable, car un créneau doit commencer et finir le même jour local. Il faut saisir par exemple 12:00 à 23:59.
-- **Devise par défaut incohérente** : le schéma Prisma met `EUR` par défaut à `Restaurant.currency`, alors que la validation de création met `TND`. Le code suit la devise de chaque restaurant, mais la valeur par défaut reste à trancher.
-- **Recherche en mémoire** : le filtre nom/ville s'applique après lecture des restaurants `ACTIVE`, avec quelques requêtes par restaurant. À revoir avec beaucoup de restaurants.
+- **Recherche en mémoire** : le filtre nom/ville (et cuisine, prix) s'applique après lecture des restaurants `ACTIVE`, avec quelques requêtes par restaurant. À revoir avec beaucoup de restaurants.
 - **Menu** : un restaurant sans menu publié (`Menu.isPublished`, faux par défaut) s'affiche sans carte.
-- Pas de cuisine, note, distance ni fourchette de prix côté client (aucune colonne en base), pas de favoris, pas de vue 3D (remplacée par le plan 2D).
+- Pas de distance côté client, pas de modération des avis (le statut `HIDDEN` est réservé), pas de vue 3D (remplacée par le plan 2D).
 
 ---
 
 ## 10. Prochaine étape
 
-**Non implémenté** : la vue des réservations et des commandes côté gérant et personnel. Les données existent déjà (`Reservation`, `Order`, statuts, `AuditLog`), mais aucun écran ni route n'y accède.
+**Non implémenté** : le plan de salle en direct et le côté personnel. Le tableau de bord gérant, la liste des réservations et des commandes et les notifications du client sont réels (voir §4.2 f et §9) ; il reste la maquette du plan de salle du tableau de bord (`FloorPlanView`) et le tableau de service du personnel (`staff/_lib/board.ts`), qui affichent encore des données statiques.
 
 À faire, dans cet ordre :
 
-1. **Routes gérant** : `GET /api/restaurants/:id/reservations` (filtres par date et statut) et `GET /api/restaurants/:id/orders`, protégées par `requireManagedRestaurant`.
-2. **Changements de statut** : `PENDING → CONFIRMED → PREPARING → READY → DELIVERED` pour les commandes, et `SEATED`, `COMPLETED`, `NO_SHOW` pour les réservations. Prévoir l'annulation côté gérant et la notification du client.
-3. **Écrans** : remplacer les données statiques de `ReservationsWidget`, `FloorPlanView` et `staff/_lib/board.ts` par ces routes.
-4. **Complément** : carte « Your next reservation » sur l'accueil client, notifications (table `Notification`), avis (`Review`), et un suivi en temps réel (SSE) pour le service.
+1. **Plan en direct** : remplacer les tables et réservations factices de `FloorPlanView` par les vraies tables de l'étage et l'état dérivé des réservations du moment (libre, réservée, installée, à nettoyer), avec les routes déjà en place.
+2. **Chronomètres** : durée écoulée depuis l'installation (`SEATED`), temps restant sur le créneau de 90 minutes, alerte de dépassement, et délai d'attente des commandes (`PENDING` à `READY`).
+3. **Personnel** : brancher le tableau de service du personnel sur les mêmes routes, avec des droits adaptés (le rôle `STAFF` ne peut aujourd'hui ni lister ni changer de statut), et saisie d'une commande en salle (`Order` sans réservation).
+4. **Temps réel** : remplacer le polling de 30 s par un flux SSE, une fois les écrans stables ; ajouter les avis (`Review`) et les favoris du client.
 
 ---
 

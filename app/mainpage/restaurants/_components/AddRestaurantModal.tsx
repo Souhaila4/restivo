@@ -1,5 +1,6 @@
 "use client";
 
+import { CuisineField, ImageUrlField, PriceLevelField } from "./ProfileFields";
 import React, { useEffect, useState } from "react";
 import Image from "next/image";
 import {
@@ -72,6 +73,9 @@ export function AddRestaurantModal() {
   const [currency, setCurrency] = useState("TND");
   const [timezone, setTimezone] = useState("Africa/Tunis");
   const [coverUrl, setCoverUrl] = useState(PRESET_PHOTOS[0].src);
+  const [cuisine, setCuisine] = useState("");
+  const [priceLevel, setPriceLevel] = useState<number | null>(null);
+  const [logoUrl, setLogoUrl] = useState("");
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
   const [country, setCountry] = useState("Tunisia");
@@ -107,6 +111,9 @@ export function AddRestaurantModal() {
     setCurrency("TND");
     setTimezone("Africa/Tunis");
     setCoverUrl(PRESET_PHOTOS[0].src);
+    setCuisine("");
+    setPriceLevel(null);
+    setLogoUrl("");
     setAddress("");
     setCity("");
     setCountry("Tunisia");
@@ -135,6 +142,12 @@ export function AddRestaurantModal() {
       );
       if (openWithoutTimes) {
         return `Set opening hours for ${DAY_NAMES[openWithoutTimes.dayOfWeek]}.`;
+      }
+      const sameTimes = hours.find(
+        (day) => !day.isClosed && day.openTime && day.openTime === day.closeTime
+      );
+      if (sameTimes) {
+        return `${DAY_NAMES[sameTimes.dayOfWeek]}: closing time must differ from opening time.`;
       }
     }
     if (current === 4) {
@@ -202,7 +215,10 @@ export function AddRestaurantModal() {
         phone: phone.trim() || undefined,
         email: email.trim() || undefined,
         website: website.trim() || undefined,
-        coverUrl,
+        coverUrl: coverUrl.trim() || undefined,
+        cuisine: cuisine.trim() || undefined,
+        priceLevel: priceLevel ?? undefined,
+        logoUrl: logoUrl.trim() || undefined,
         address: address.trim() || undefined,
         city: city.trim() || undefined,
         country: country.trim() || undefined,
@@ -366,6 +382,11 @@ export function AddRestaurantModal() {
                       </select>
                     </Field>
                   </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <CuisineField value={cuisine} onChange={setCuisine} />
+                    <PriceLevelField value={priceLevel} currency={currency} onChange={setPriceLevel} />
+                  </div>
+                  <ImageUrlField label="Logo link (optional)" value={logoUrl} onChange={setLogoUrl} />
                   <Field label="Cover photo">
                     <div className="grid grid-cols-5 gap-2">
                       {PRESET_PHOTOS.map((photo) => {
@@ -387,6 +408,7 @@ export function AddRestaurantModal() {
                       })}
                     </div>
                   </Field>
+                  <ImageUrlField wide label="Or a cover link" value={coverUrl} onChange={setCoverUrl} />
                 </div>
               )}
 

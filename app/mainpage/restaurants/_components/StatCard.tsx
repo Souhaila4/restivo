@@ -7,6 +7,8 @@ interface StatCardProps {
   icon: React.ReactNode;
   title: string;
   value: number;
+  /** Shown as is instead of the animated number (exact decimals, e.g. revenue). */
+  valueText?: string;
   suffix?: string;
   prefix?: string;
   trendText?: string;
@@ -21,13 +23,14 @@ export function StatCard({
   icon,
   title,
   value,
+  valueText,
   suffix = "",
   prefix = "",
   trendText,
   subText,
   trendType = "positive",
   chartColor = "green",
-  chartPoints = [30, 45, 38, 55, 48, 62, 70],
+  chartPoints,
   delay = 0,
 }: StatCardProps) {
   const [displayValue, setDisplayValue] = useState(0);
@@ -61,15 +64,16 @@ export function StatCard({
     return () => clearTimeout(timer);
   }, [value, delay]);
 
-  // Generate SVG path for sparkline
+  // Generate SVG path for sparkline (only drawn when a series is given)
+  const series = chartPoints && chartPoints.length > 1 ? chartPoints : [0, 0];
   const width = 160;
   const height = 44;
-  const min = Math.min(...chartPoints);
-  const max = Math.max(...chartPoints);
+  const min = Math.min(...series);
+  const max = Math.max(...series);
   const range = max - min || 1;
 
-  const points = chartPoints.map((pt, i) => {
-    const x = (i / (chartPoints.length - 1)) * width;
+  const points = series.map((pt, i) => {
+    const x = (i / (series.length - 1)) * width;
     const y = height - ((pt - min) / range) * (height - 12) - 6;
     return { x, y };
   });
@@ -102,7 +106,7 @@ export function StatCard({
         {/* Big Number */}
         <div className="text-2xl sm:text-[28px] font-extrabold text-[#1A1A1A] tracking-tight leading-none mt-1">
           {prefix}
-          {displayValue.toLocaleString()}
+          {valueText ?? displayValue.toLocaleString()}
           {suffix}
         </div>
 
@@ -123,6 +127,7 @@ export function StatCard({
       </div>
 
       {/* Sparkline curve at bottom */}
+      {chartPoints && chartPoints.length > 1 && (
       <div className="mt-3 relative h-10 w-full overflow-hidden">
         <svg
           viewBox={`0 0 ${width} ${height}`}
@@ -186,6 +191,7 @@ export function StatCard({
           )}
         </svg>
       </div>
+      )}
     </div>
   );
 }

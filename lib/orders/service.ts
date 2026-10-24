@@ -6,6 +6,7 @@
  * order. The reservation is re-checked under the same advisory lock the
  * cancellation uses, so an order can never slip in after a cancellation.
  */
+import { cancelledByRestaurant } from "@/lib/manager/cancellation";
 import { Temporal } from "temporal-polyfill";
 import { db } from "@/lib/db";
 import { advisoryXactLock } from "@/lib/locks";
@@ -145,6 +146,13 @@ export async function createOrder(userId: string, input: CreateOrderBody): Promi
   return order;
 }
 
+/** An order is cancelled by the restaurant directly, or through its reservation. */
+async function orderCancelledByRestaurant(order: { id: string; status: string; customerId: string; reservationId: string | null }) {
+  if (order.status !== "CANCELLED") return false;
+  if (await cancelledByRestaurant("Order", order.id, order.customerId)) return true;
+  return order.reservationId ? cancelledByRestaurant("Reservation", order.reservationId, order.customerId) : false;
+}
+
 export async function listMyOrders(userId: string, reservationId?: string): Promise<PublicOrder[]> {
   const rows = await db.orm.public.Order.where(
     reservationId ? { customerId: userId, reservationId } : { customerId: userId },
@@ -204,6 +212,7 @@ export async function toPublicOrders(orderIds: string[], userId: string): Promis
       })),
       restaurant: { id: restaurant.id, name: restaurant.name, timezone: restaurant.timezone },
       reservation,
+      cancelledByRestaurant: await orderCancelledByRestaurant(order),
       createdMs,
     });
   }

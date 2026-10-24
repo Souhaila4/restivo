@@ -50,4 +50,6 @@ export type PublicOrder = {
   items: PublicOrderItem[];
   restaurant: { id: string; name: string; timezone: string };
   reservation: { id: string; code: string; startsAt: string; tableName: string } | null;
+  /** True when the restaurant, not the customer, cancelled it. */
+  cancelledByRestaurant: boolean;
 };

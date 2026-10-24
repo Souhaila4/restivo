@@ -116,12 +116,21 @@ export function toErrorResponse(err: unknown): Response {
 
 // ─── Utility ─────────────────────────────────────────────────────────────────
 
+/** The PostgreSQL SQLSTATE of an error: `sqlState` from the Prisma 8 driver, `code` from raw pg, or their cause. */
+function pgState(err: unknown): string | null {
+  if (typeof err !== "object" || err === null) return null;
+  const { sqlState, code, cause } = err as { sqlState?: unknown; code?: unknown; cause?: unknown };
+  if (typeof sqlState === "string") return sqlState;
+  if (typeof code === "string" && /^[0-9A-Z]{5}$/.test(code)) return code;
+  return cause ? pgState(cause) : null;
+}
+
 /** True when a PostgreSQL error is a unique-constraint violation. */
 export function isPgUniqueViolation(err: unknown): boolean {
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    "code" in err &&
-    (err as { code: unknown }).code === "23505"
-  );
+  return pgState(err) === "23505";
+}
+
+/** True when a PostgreSQL error is a foreign-key violation. */
+export function isPgForeignKeyViolation(err: unknown): boolean {
+  return pgState(err) === "23503";
 }

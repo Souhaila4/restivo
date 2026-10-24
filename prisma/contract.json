@@ -12,6 +12,10 @@
       "model": "BusinessHours",
       "namespace": "public"
     },
+    "Favorite": {
+      "model": "Favorite",
+      "namespace": "public"
+    },
     "Floor": {
       "model": "Floor",
       "namespace": "public"
@@ -677,6 +681,90 @@
               },
               "namespaceId": "public",
               "table": "BusinessHours"
+            }
+          },
+          "Favorite": {
+            "fields": {
+              "createdAt": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/timestamptz-temporal@1",
+                  "kind": "scalar"
+                }
+              },
+              "id": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "restaurantId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
+              "userId": {
+                "nullable": false,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              }
+            },
+            "relations": {
+              "restaurant": {
+                "cardinality": "N:1",
+                "nullable": false,
+                "on": {
+                  "localFields": [
+                    "restaurantId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "Restaurant",
+                  "namespace": "public"
+                }
+              },
+              "user": {
+                "cardinality": "N:1",
+                "nullable": false,
+                "on": {
+                  "localFields": [
+                    "userId"
+                  ],
+                  "targetFields": [
+                    "id"
+                  ]
+                },
+                "to": {
+                  "model": "User",
+                  "namespace": "public"
+                }
+              }
+            },
+            "storage": {
+              "fields": {
+                "createdAt": {
+                  "column": "createdAt"
+                },
+                "id": {
+                  "column": "id"
+                },
+                "restaurantId": {
+                  "column": "restaurantId"
+                },
+                "userId": {
+                  "column": "userId"
+                }
+              },
+              "namespaceId": "public",
+              "table": "Favorite"
             }
           },
           "Floor": {
@@ -2731,6 +2819,13 @@
                   "kind": "scalar"
                 }
               },
+              "cuisine": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
               "currency": {
                 "nullable": false,
                 "type": {
@@ -2808,6 +2903,13 @@
                   "kind": "scalar"
                 }
               },
+              "priceLevel": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/int4@1",
+                  "kind": "scalar"
+                }
+              },
               "slug": {
                 "nullable": false,
                 "type": {
@@ -2878,6 +2980,21 @@
                 },
                 "to": {
                   "model": "BusinessHours",
+                  "namespace": "public"
+                }
+              },
+              "favorites": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "restaurantId"
+                  ]
+                },
+                "to": {
+                  "model": "Favorite",
                   "namespace": "public"
                 }
               },
@@ -3065,6 +3182,9 @@
                 "createdAt": {
                   "column": "createdAt"
                 },
+                "cuisine": {
+                  "column": "cuisine"
+                },
                 "currency": {
                   "column": "currency"
                 },
@@ -3097,6 +3217,9 @@
                 },
                 "postalCode": {
                   "column": "postalCode"
+                },
+                "priceLevel": {
+                  "column": "priceLevel"
                 },
                 "slug": {
                   "column": "slug"
@@ -3867,6 +3990,21 @@
                   "namespace": "public"
                 }
               },
+              "favorites": {
+                "cardinality": "1:N",
+                "on": {
+                  "localFields": [
+                    "id"
+                  ],
+                  "targetFields": [
+                    "userId"
+                  ]
+                },
+                "to": {
+                  "model": "Favorite",
+                  "namespace": "public"
+                }
+              },
               "media": {
                 "cardinality": "1:N",
                 "on": {
@@ -4297,6 +4435,101 @@
                   "columns": [
                     "restaurantId",
                     "dayOfWeek"
+                  ]
+                }
+              ]
+            },
+            "Favorite": {
+              "columns": {
+                "createdAt": {
+                  "codecId": "pg/timestamptz-temporal@1",
+                  "default": {
+                    "expression": "now()",
+                    "kind": "function"
+                  },
+                  "nativeType": "timestamptz",
+                  "nullable": false
+                },
+                "id": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "restaurantId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                },
+                "userId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": false
+                }
+              },
+              "foreignKeys": [
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "userId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "Favorite"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "User"
+                  }
+                },
+                {
+                  "onDelete": "cascade",
+                  "source": {
+                    "columns": [
+                      "restaurantId"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "Favorite"
+                  },
+                  "target": {
+                    "columns": [
+                      "id"
+                    ],
+                    "namespaceId": "public",
+                    "tableName": "Restaurant"
+                  }
+                }
+              ],
+              "indexes": [
+                {
+                  "columns": [
+                    "restaurantId"
+                  ],
+                  "name": "Favorite_restaurantId_idx_cf3ee7d0",
+                  "prefix": "Favorite_restaurantId_idx",
+                  "unique": false
+                },
+                {
+                  "columns": [
+                    "userId"
+                  ],
+                  "name": "Favorite_userId_idx_a489d58a",
+                  "prefix": "Favorite_userId_idx",
+                  "unique": false
+                }
+              ],
+              "primaryKey": {
+                "columns": [
+                  "id"
+                ]
+              },
+              "uniques": [
+                {
+                  "columns": [
+                    "userId",
+                    "restaurantId"
                   ]
                 }
               ]
@@ -6054,6 +6287,11 @@
                   "expression": "\"status\" IN ('DRAFT', 'ACTIVE', 'SUSPENDED', 'ARCHIVED')",
                   "name": "Restaurant_status_check_7c32a1fc",
                   "prefix": "Restaurant_status_check"
+                },
+                {
+                  "expression": "\"priceLevel\" IS NULL OR \"priceLevel\" BETWEEN 1 AND 4",
+                  "name": "price_level_range_6639a0cb",
+                  "prefix": "price_level_range"
                 }
               ],
               "columns": {
@@ -6086,11 +6324,16 @@
                   "nativeType": "timestamptz",
                   "nullable": false
                 },
+                "cuisine": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
                 "currency": {
                   "codecId": "pg/text@1",
                   "default": {
                     "kind": "literal",
-                    "value": "EUR"
+                    "value": "TND"
                   },
                   "nativeType": "text",
                   "nullable": false
@@ -6143,6 +6386,11 @@
                 "postalCode": {
                   "codecId": "pg/text@1",
                   "nativeType": "text",
+                  "nullable": true
+                },
+                "priceLevel": {
+                  "codecId": "pg/int4@1",
+                  "nativeType": "int4",
                   "nullable": true
                 },
                 "slug": {
@@ -7169,10 +7417,10 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "6f4f5f79cbb2e5878045829a6aef3cdec3b443617e7b5322f93f2e8b900eeeb5"
+    "storageHash": "60c889555850511ad3b57db3f84aab124f850dd4db5595fd81bdf09f41da31be"
   },
   "execution": {
-    "executionHash": "aa07f03684dff45f53223e3c33d10e2b922b0f589774be74530c0b10fca568aa",
+    "executionHash": "ed86ef755ec08842c3c1687b3362e9584ab68bbbae17f6b3c10c7cca44597b90",
     "mutations": {
       "defaults": [
         {
@@ -7210,6 +7458,17 @@
             "column": "updatedAt",
             "namespace": "public",
             "table": "BusinessHours"
+          }
+        },
+        {
+          "onCreate": {
+            "id": "ulid",
+            "kind": "generator"
+          },
+          "ref": {
+            "column": "id",
+            "namespace": "public",
+            "table": "Favorite"
           }
         },
         {

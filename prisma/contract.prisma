@@ -144,6 +144,8 @@ model User {
 
   reviews            Review[]                      @relation("CustomerReviews")
 
+  favorites          Favorite[]
+
   notifications      Notification[]
 
   media              Media[]
@@ -196,6 +198,12 @@ model Restaurant {
   logoUrl            String?
   coverUrl           String?
 
+  // Free text (suggestions in the UI), e.g. "Tunisian", "Italian".
+  cuisine            String?
+
+  // 1 = cheap ... 4 = expensive. Shown as currency symbols.
+  priceLevel         Int?
+
   phone              String?
   email              String?
   website            String?
@@ -208,7 +216,7 @@ model Restaurant {
   latitude           Decimal?                      
   longitude          Decimal?                      
 
-  currency           String                        @default("EUR")
+  currency           String                        @default("TND")
   timezone           String                        @default("UTC")
 
   status             RestaurantStatus              @default(DRAFT)
@@ -231,6 +239,8 @@ model Restaurant {
 
   reviews            Review[]
 
+  favorites          Favorite[]
+
   notifications      Notification[]
 
   media              Media[]
@@ -244,6 +254,7 @@ model Restaurant {
   @@index([status])
   @@index([city])
   @@index([country])
+  @@check(expression: "\"priceLevel\" IS NULL OR \"priceLevel\" BETWEEN 1 AND 4", name: "price_level_range")
 }
 
 //
@@ -747,6 +758,26 @@ model Review {
 
   @@index([restaurantId, status])
   @@index([customerId])
+}
+
+//
+// --------------------------------------------------------------------------
+// FAVORITE
+// --------------------------------------------------------------------------
+model Favorite {
+  id           String     @id @default(ulid())
+
+  userId       String
+  restaurantId String
+
+  user         User       @relation(fields:[userId], references:[id], onDelete: Cascade)
+
+  restaurant   Restaurant @relation(fields:[restaurantId], references:[id], onDelete: Cascade)
+
+  createdAt    DateTime   @default(now())
+
+  @@unique([userId, restaurantId])
+  @@index([restaurantId])
 }
 
 //

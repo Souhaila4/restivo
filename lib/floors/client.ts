@@ -113,3 +113,19 @@ export async function apiSaveLayout(
   const json = await handleResponse<{ floor: PublicFloor }>(res);
   return json.floor;
 }
+
+export async function apiSetFloorActive(
+  accessToken: string,
+  restaurantId: string,
+  floorId: string,
+  isActive: boolean,
+): Promise<PublicFloor[]> {
+  const res = await fetch(`/api/restaurants/${restaurantId}/floors/${floorId}/active`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+    credentials: "include",
+    body: JSON.stringify({ isActive }),
+  });
+  const json = await handleResponse<{ floors: PublicFloor[] }>(res);
+  return json.floors;
+}

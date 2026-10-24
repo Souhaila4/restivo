@@ -15,6 +15,9 @@ export type PublicRestaurant = {
   timezone: string;
   logoUrl: string | null;
   coverUrl: string | null;
+  cuisine: string | null;
+  /** 1 (cheap) to 4 (expensive). */
+  priceLevel: number | null;
   role: "OWNER" | "MANAGER";
   floorsCount: number;
   tablesCount: number;
@@ -39,6 +42,8 @@ type RestaurantRow = {
   timezone: string;
   logoUrl: string | null;
   coverUrl: string | null;
+  cuisine: string | null;
+  priceLevel: number | null;
   createdAt: { toString?: () => string } | string | null;
 };
 
@@ -74,6 +79,8 @@ export function toPublicRestaurant(
     timezone: restaurant.timezone,
     logoUrl: restaurant.logoUrl,
     coverUrl: restaurant.coverUrl,
+    cuisine: restaurant.cuisine,
+    priceLevel: restaurant.priceLevel,
     role: extras.role,
     floorsCount: extras.floorsCount,
     tablesCount: extras.tablesCount ?? 0,

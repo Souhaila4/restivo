@@ -43,7 +43,7 @@ export function FloorPlanView({ onOpenFullModal }: FloorPlanViewProps) {
     { id: "T08", name: "Table 08", seats: 2, status: "Reserved", guest: "Karim", time: "20:00", x: 42, y: 46, type: "round" },
 
     // Middle Booths & Large Tables
-    { id: "T14", name: "Table 14", seats: 2, status: "Reserved", guest: "Ahmed", time: "19:30", x: 33, y: 64, type: "rect" },
+    { id: "T14", name: "Table 14", seats: 2, status: "Reserved", guest: "Guest", time: "19:30", x: 33, y: 64, type: "rect" },
     { id: "T15", name: "Table 15", seats: 4, status: "Available", x: 42, y: 64, type: "rect" },
     { id: "T18", name: "Table 18", seats: 4, status: "Occupied", guest: "Family Ben Salah", time: "11:45", x: 48, y: 64, type: "rect" },
 

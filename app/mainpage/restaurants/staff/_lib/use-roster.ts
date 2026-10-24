@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ApiError } from "@/lib/auth/client";
-import { apiGetRoster, apiReviewRequest } from "@/lib/staff/roster-client";
+import { apiChangeRole, apiGetRoster, apiReviewRequest } from "@/lib/staff/roster-client";
 import type { RestaurantRoster, RosterReview } from "@/lib/staff/types";
 
 const EMPTY: RestaurantRoster = { members: [], requests: [] };
@@ -67,6 +67,32 @@ export function useRestaurantRoster(restaurantId: string | undefined) {
     [getAccessToken, pendingId, restaurantId]
   );
 
+  const changeRole = useCallback(
+    async (membershipId: string, role: "MANAGER" | "STAFF") => {
+      if (!restaurantId || pendingId) return;
+      const token = getAccessToken();
+      if (!token) {
+        setError("Sign in again to manage staff.");
+        return;
+      }
+
+      setPendingId(membershipId);
+      setError(null);
+      try {
+        const member = await apiChangeRole(token, restaurantId, membershipId, role);
+        setRoster((current) => ({
+          ...current,
+          members: current.members.map((entry) => (entry.id === member.id ? member : entry)),
+        }));
+      } catch (err) {
+        setError(messageOf(err));
+      } finally {
+        setPendingId(null);
+      }
+    },
+    [getAccessToken, pendingId, restaurantId]
+  );
+
   return {
     members: loaded ? roster.members : [],
     requests: loaded ? roster.requests : [],
@@ -75,6 +101,7 @@ export function useRestaurantRoster(restaurantId: string | undefined) {
     pendingId,
     accept: (requestId: string) => review(requestId, "ACCEPT"),
     decline: (requestId: string) => review(requestId, "DECLINE"),
+    changeRole,
   };
 }
 

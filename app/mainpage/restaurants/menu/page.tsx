@@ -1,5 +1,6 @@
 "use client";
 
+import { RestaurantLoadError } from "../_components/RestaurantLoadError";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Store } from "lucide-react";
@@ -39,7 +40,7 @@ import { previewBookMenu } from "@/lib/menu/preview-view";
 export default function MenuPage() {
   const router = useRouter();
   const { user, isReady, getAccessToken } = useAuth();
-  const { currentRestaurant, isLoadingRestaurants, setIsAddRestaurantOpen } =
+  const { currentRestaurant, isLoadingRestaurants, setIsAddRestaurantOpen, loadError, reloadRestaurants } =
     useRestaurantManager();
 
   const [menu, setMenu] = useState<PublicMenu | null>(null);
@@ -207,6 +208,8 @@ export default function MenuPage() {
       </div>
     );
   }
+
+  if (loadError) return <RestaurantLoadError message={loadError} onRetry={reloadRestaurants} />;
 
   if (!currentRestaurant || !restaurantId) {
     return (

@@ -15,6 +15,7 @@ import { formatSlotDate, formatSlotTime } from "@/lib/reservations/format";
 import type { PublicReservation } from "@/lib/reservations/types";
 import { useRequireSignIn } from "../_lib/useRequireSignIn";
 import { BookingPanel, type BookingSelection } from "./BookingPanel";
+import { ChangeReservationFlow } from "./ChangeReservationFlow";
 import { MenuBookDialog } from "./book/MenuBookDialog";
 
 type Step = "plan" | "review" | "done";
@@ -56,6 +57,17 @@ function prettyDate(date: string): string {
  * adds a pre-order to it.
  */
 export function ReservationFlow({ restaurant }: { restaurant: DiscoverRestaurantDetail }) {
+  // With ?change=<reservationId> (the "Change" button of the Reservations page) the plan opens
+  // for that reservation instead of starting a new booking.
+  const changeId = useSearchParams().get("change");
+  return changeId ? (
+    <ChangeReservationFlow key={changeId} restaurant={restaurant} reservationId={changeId} />
+  ) : (
+    <BookingJourney restaurant={restaurant} />
+  );
+}
+
+function BookingJourney({ restaurant }: { restaurant: DiscoverRestaurantDetail }) {
   const { signedIn, getFreshAccessToken } = useRequireSignIn();
   const preorderId = useSearchParams().get("preorder");
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { RestaurantLoadError } from "../_components/RestaurantLoadError";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Store } from "lucide-react";
@@ -10,7 +11,7 @@ import { ManagerChat } from "./_components/ManagerChat";
 export default function AiManagerPage() {
   const router = useRouter();
   const { user, isReady } = useAuth();
-  const { currentRestaurant, isLoadingRestaurants, setIsAddRestaurantOpen } = useRestaurantManager();
+  const { currentRestaurant, isLoadingRestaurants, setIsAddRestaurantOpen, loadError, reloadRestaurants } = useRestaurantManager();
 
   useEffect(() => {
     if (!isReady) return;
@@ -20,6 +21,8 @@ export default function AiManagerPage() {
   if (!isReady || isLoadingRestaurants || !user?.canManageRestaurants) {
     return <p className="py-24 text-center text-sm text-[#7A746B]">Loading…</p>;
   }
+
+  if (loadError) return <RestaurantLoadError message={loadError} onRetry={reloadRestaurants} />;
 
   if (!currentRestaurant) {
     return (

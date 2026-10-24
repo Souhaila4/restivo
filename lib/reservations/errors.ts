@@ -14,6 +14,19 @@ export const RESERVATION_ERROR_CODES = {
   TABLE_TOO_SMALL: { status: 422, message: "This table does not seat that many guests." },
   SLOT_TAKEN: { status: 409, message: "This table is already booked for that time. Please pick another." },
   NOT_CANCELLABLE: { status: 409, message: "Only upcoming reservations can be cancelled." },
+  NOT_MODIFIABLE: {
+    status: 409,
+    message: "Only an upcoming reservation that has not started can be changed.",
+  },
+  NOT_REVIEWABLE: {
+    status: 409,
+    message: "You can review a reservation once the restaurant has marked it as completed.",
+  },
+  ALREADY_REVIEWED: { status: 409, message: "You already reviewed this reservation." },
+  INVALID_TRANSITION: { status: 409, message: "This status change is not allowed." },
+  TOO_EARLY: { status: 409, message: "It is too early for this status change." },
+  TOO_LATE: { status: 409, message: "It is too late for this status change." },
+  RESERVATION_CLOSED: { status: 409, message: "The reservation of this order is closed." },
   INTERNAL_ERROR: { status: 500, message: "An unexpected error occurred. Please try again later." },
 } as const;
 

@@ -1,5 +1,5 @@
 import { ApiError } from "@/lib/auth/client";
-import type { DiscoverRestaurantDetail, DiscoverRestaurantSummary } from "./types";
+import type { DiscoverList, DiscoverRestaurantDetail } from "./types";
 
 async function handleResponse<T>(res: Response): Promise<T> {
   const json = await res.json().catch(() => ({}));
@@ -20,12 +20,17 @@ function authHeaders(accessToken: string) {
 export async function apiListDiscoverRestaurants(
   accessToken: string,
   query: string,
+  filters: { cuisine?: string; price?: number[] } = {},
   signal?: AbortSignal,
-): Promise<DiscoverRestaurantSummary[]> {
-  const search = query.trim() ? `?q=${encodeURIComponent(query.trim())}` : "";
+): Promise<DiscoverList> {
+  const params = new URLSearchParams();
+  if (query.trim()) params.set("q", query.trim());
+  if (filters.cuisine?.trim()) params.set("cuisine", filters.cuisine.trim());
+  if (filters.price && filters.price.length > 0) params.set("price", filters.price.join(","));
+  const search = params.toString() ? `?${params.toString()}` : "";
   const res = await fetch(`/api/discover/restaurants${search}`, { ...authHeaders(accessToken), signal });
-  const json = await handleResponse<{ restaurants: DiscoverRestaurantSummary[] }>(res);
-  return json.restaurants;
+  const json = await handleResponse<{ restaurants: DiscoverList["restaurants"]; cuisines: string[] }>(res);
+  return { restaurants: json.restaurants, cuisines: json.cuisines ?? [] };
 }
 
 export async function apiGetDiscoverRestaurant(

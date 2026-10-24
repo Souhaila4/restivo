@@ -24,6 +24,10 @@ import {
   Building2,
   Calendar,
 } from "lucide-react";
+import { ApiError, useAuth } from "@/contexts/AuthContext";
+import { apiUpdateRestaurant } from "@/lib/restaurants/client";
+import { HoursEditor } from "./HoursEditor";
+import { CuisineField, ImageUrlField, PriceLevelField } from "./ProfileFields";
 import {
   useRestaurantManager,
   ManagedRestaurant,
@@ -65,6 +69,11 @@ export function RestaurantProfileModal() {
   const [activeTab, setActiveTab] = useState<"about" | "contact" | "operations" | "gallery">("about");
   const [isEditing, setIsEditing] = useState(false);
   const [saveToast, setSaveToast] = useState(false);
+  const { getFreshAccessToken } = useAuth();
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  // Messages by form field, from the server (422) or from the checks below.
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   // Editable form state
   const selectedRest = profileModalRestaurant ?? currentRestaurant ?? restaurants[0];
@@ -77,9 +86,8 @@ export function RestaurantProfileModal() {
   const [formEmail, setFormEmail] = useState("");
   const [formWebsite, setFormWebsite] = useState("");
   const [formDesc, setFormDesc] = useState("");
-  const [formTables, setFormTables] = useState(24);
-  const [formCapacity, setFormCapacity] = useState(96);
-  const [formFloors, setFormFloors] = useState(2);
+  const [formPrice, setFormPrice] = useState<number | null>(null);
+  const [formLogo, setFormLogo] = useState("");
   const [formImage, setFormImage] = useState("");
 
   // Sync state whenever selectedRest changes
@@ -87,48 +95,85 @@ export function RestaurantProfileModal() {
     if (selectedRest) {
       setFormName(selectedRest.name || "");
       setFormCuisine(selectedRest.cuisine || "");
-      setFormCity(selectedRest.city || "Tunis");
+      setFormPrice(selectedRest.priceLevel ?? null);
+      setFormLogo(selectedRest.logoUrl || "");
+      setFormCity(selectedRest.city || "");
       setFormAddress(selectedRest.address || "");
-      setFormPhone(selectedRest.phone || "+216 71 860 120");
-      setFormEmail(selectedRest.email || `contact@${selectedRest.slug || "restivo"}.tn`);
-      setFormWebsite(selectedRest.website || `https://${selectedRest.slug || "maison-olive"}.restivo.app`);
-      setFormDesc(
-        selectedRest.description ||
-          "An authentic culinary destination blending ancestral Mediterranean recipes with contemporary gastronomic artistry."
-      );
-      setFormTables(selectedRest.tablesCount || 24);
-      setFormCapacity(selectedRest.capacity || 96);
-      setFormFloors(selectedRest.floorsCount || 2);
-      setFormImage(selectedRest.image || "/images/restaurant-ambient.jpg");
+      setFormPhone(selectedRest.phone || "");
+      setFormEmail(selectedRest.email || "");
+      setFormWebsite(selectedRest.website || "");
+      setFormDesc(selectedRest.description || "");
+      setFormImage(selectedRest.coverUrl || "");
       setIsEditing(false);
+      setSaveError(null);
+      setFieldErrors({});
     }
   }, [selectedRest]);
 
   if (!isProfileModalOpen || !selectedRest) return null;
 
-  const handleSaveChanges = (e: React.FormEvent) => {
+  const handleSaveChanges = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedRest) return;
+    if (!selectedRest || saving) return;
 
-    updateRestaurantProfile(selectedRest.id, {
-      name: formName.trim() || selectedRest.name,
-      cuisine: formCuisine.trim() || selectedRest.cuisine,
-      city: formCity.trim() || selectedRest.city,
-      address: formAddress.trim() || selectedRest.address,
-      location: formAddress ? `${formAddress}, ${formCity}` : `${formCity}, Tunisia`,
-      phone: formPhone.trim() || selectedRest.phone,
-      email: formEmail.trim() || selectedRest.email,
-      website: formWebsite.trim() || selectedRest.website,
-      description: formDesc.trim() || selectedRest.description,
-      tablesCount: Number(formTables) || selectedRest.tablesCount,
-      capacity: Number(formCapacity) || selectedRest.capacity,
-      floorsCount: Number(formFloors) || selectedRest.floorsCount,
-      image: formImage || selectedRest.image,
-    });
+    const found: Record<string, string> = {};
+    if (formName.trim().length < 2) found.name = "Restaurant name is required.";
+    if (formEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formEmail.trim())) {
+      found.email = "Please enter a valid email address.";
+    }
+    if (formPhone.trim() && !/^\+?[\d\s\-().]{7,20}$/.test(formPhone.trim())) {
+      found.phone = "Please enter a valid phone number.";
+    }
+    setFieldErrors(found);
+    setSaveError(null);
+    if (Object.keys(found).length > 0) return;
 
-    setIsEditing(false);
-    setSaveToast(true);
-    setTimeout(() => setSaveToast(false), 2000);
+    setSaving(true);
+    try {
+      const token = await getFreshAccessToken();
+      if (!token) throw new Error("Your session expired. Sign in again.");
+      const saved = await apiUpdateRestaurant(token, selectedRest.id, {
+        name: formName.trim(),
+        description: formDesc.trim(),
+        address: formAddress.trim(),
+        city: formCity.trim(),
+        website: formWebsite.trim(),
+        phone: formPhone.trim(),
+        email: formEmail.trim(),
+        cuisine: formCuisine.trim(),
+        priceLevel: formPrice,
+        logoUrl: formLogo.trim(),
+        coverUrl: formImage.trim(),
+      });
+
+      updateRestaurantProfile(selectedRest.id, {
+        name: saved.name,
+        description: saved.description ?? undefined,
+        address: saved.address ?? undefined,
+        city: saved.city ?? undefined,
+        phone: saved.phone ?? undefined,
+        email: saved.email ?? undefined,
+        website: saved.website ?? undefined,
+        location: [saved.address, saved.city, saved.country].filter(Boolean).join(", ") || saved.city || "",
+        cuisine: saved.cuisine ?? "",
+        priceLevel: saved.priceLevel,
+        logoUrl: saved.logoUrl,
+        coverUrl: saved.coverUrl,
+        image: saved.coverUrl || "/images/restaurant-ambient.jpg",
+      });
+
+      setIsEditing(false);
+      setSaveToast(true);
+      setTimeout(() => setSaveToast(false), 2500);
+    } catch (err) {
+      if (err instanceof ApiError && err.field) {
+        setFieldErrors({ [err.field]: err.message });
+      } else {
+        setSaveError(err instanceof Error ? err.message : "Could not save the profile. Try again.");
+      }
+    } finally {
+      setSaving(false);
+    }
   };
 
   const isCurrentActive = currentRestaurant?.id === selectedRest.id;
@@ -302,21 +347,17 @@ export function RestaurantProfileModal() {
                     type="text"
                     required
                     value={formName}
-                    onChange={(e) => setFormName(e.target.value)}
+                    onChange={(e) => { setFormName(e.target.value); setFieldErrors((prev) => ({ ...prev, name: "" })); }}
                     className="w-full bg-white rounded-xl border border-[#DFD8CC] px-3.5 py-2 text-xs text-[#1A1A1A] focus:outline-none focus:border-[#B55234]"
                   />
+                  {fieldErrors.name ? <p className="mt-1 text-xs font-medium text-red-600">{fieldErrors.name}</p> : null}
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-[#2A2621] uppercase tracking-wider mb-1">
-                    Cuisine Specialty
-                  </label>
-                  <input
-                    type="text"
+                  <CuisineField
                     value={formCuisine}
-                    onChange={(e) => setFormCuisine(e.target.value)}
-                    placeholder="e.g. Tunisian & Mediterranean"
-                    className="w-full bg-white rounded-xl border border-[#DFD8CC] px-3.5 py-2 text-xs text-[#1A1A1A] focus:outline-none focus:border-[#B55234]"
+                    onChange={(value) => { setFormCuisine(value); setFieldErrors((prev) => ({ ...prev, cuisine: "" })); }}
+                    error={fieldErrors.cuisine}
                   />
                 </div>
               </div>
@@ -328,9 +369,10 @@ export function RestaurantProfileModal() {
                 <textarea
                   rows={3}
                   value={formDesc}
-                  onChange={(e) => setFormDesc(e.target.value)}
+                  onChange={(e) => { setFormDesc(e.target.value); setFieldErrors((prev) => ({ ...prev, description: "" })); }}
                   className="w-full bg-white rounded-xl border border-[#DFD8CC] p-3 text-xs text-[#1A1A1A] focus:outline-none focus:border-[#B55234] leading-relaxed"
                 />
+                  {fieldErrors.description ? <p className="mt-1 text-xs font-medium text-red-600">{fieldErrors.description}</p> : null}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -341,9 +383,10 @@ export function RestaurantProfileModal() {
                   <input
                     type="text"
                     value={formCity}
-                    onChange={(e) => setFormCity(e.target.value)}
+                    onChange={(e) => { setFormCity(e.target.value); setFieldErrors((prev) => ({ ...prev, city: "" })); }}
                     className="w-full bg-white rounded-xl border border-[#DFD8CC] px-3 py-2 text-xs text-[#1A1A1A] focus:outline-none focus:border-[#B55234]"
                   />
+                  {fieldErrors.city ? <p className="mt-1 text-xs font-medium text-red-600">{fieldErrors.city}</p> : null}
                 </div>
 
                 <div>
@@ -353,9 +396,10 @@ export function RestaurantProfileModal() {
                   <input
                     type="text"
                     value={formAddress}
-                    onChange={(e) => setFormAddress(e.target.value)}
+                    onChange={(e) => { setFormAddress(e.target.value); setFieldErrors((prev) => ({ ...prev, address: "" })); }}
                     className="w-full bg-white rounded-xl border border-[#DFD8CC] px-3 py-2 text-xs text-[#1A1A1A] focus:outline-none focus:border-[#B55234]"
                   />
+                  {fieldErrors.address ? <p className="mt-1 text-xs font-medium text-red-600">{fieldErrors.address}</p> : null}
                 </div>
 
                 <div>
@@ -365,9 +409,10 @@ export function RestaurantProfileModal() {
                   <input
                     type="text"
                     value={formPhone}
-                    onChange={(e) => setFormPhone(e.target.value)}
+                    onChange={(e) => { setFormPhone(e.target.value); setFieldErrors((prev) => ({ ...prev, phone: "" })); }}
                     className="w-full bg-white rounded-xl border border-[#DFD8CC] px-3 py-2 text-xs text-[#1A1A1A] focus:outline-none focus:border-[#B55234]"
                   />
+                  {fieldErrors.phone ? <p className="mt-1 text-xs font-medium text-red-600">{fieldErrors.phone}</p> : null}
                 </div>
               </div>
 
@@ -379,9 +424,10 @@ export function RestaurantProfileModal() {
                   <input
                     type="email"
                     value={formEmail}
-                    onChange={(e) => setFormEmail(e.target.value)}
+                    onChange={(e) => { setFormEmail(e.target.value); setFieldErrors((prev) => ({ ...prev, email: "" })); }}
                     className="w-full bg-white rounded-xl border border-[#DFD8CC] px-3 py-2 text-xs text-[#1A1A1A] focus:outline-none focus:border-[#B55234]"
                   />
+                  {fieldErrors.email ? <p className="mt-1 text-xs font-medium text-red-600">{fieldErrors.email}</p> : null}
                 </div>
 
                 <div>
@@ -391,51 +437,26 @@ export function RestaurantProfileModal() {
                   <input
                     type="text"
                     value={formWebsite}
-                    onChange={(e) => setFormWebsite(e.target.value)}
+                    onChange={(e) => { setFormWebsite(e.target.value); setFieldErrors((prev) => ({ ...prev, website: "" })); }}
                     className="w-full bg-white rounded-xl border border-[#DFD8CC] px-3 py-2 text-xs text-[#1A1A1A] focus:outline-none focus:border-[#B55234]"
                   />
+                  {fieldErrors.website ? <p className="mt-1 text-xs font-medium text-red-600">{fieldErrors.website}</p> : null}
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-[#2A2621] uppercase tracking-wider mb-1">
-                    Tables Count
-                  </label>
-                  <input
-                    type="number"
-                    value={formTables}
-                    onChange={(e) => setFormTables(Number(e.target.value))}
-                    className="w-full bg-white rounded-xl border border-[#DFD8CC] px-3 py-2 text-xs text-[#1A1A1A] focus:outline-none focus:border-[#B55234]"
-                  />
-                </div>
+              <PriceLevelField
+                value={formPrice}
+                currency={selectedRest.currency || "TND"}
+                onChange={(value) => { setFormPrice(value); setFieldErrors((prev) => ({ ...prev, priceLevel: "" })); }}
+                error={fieldErrors.priceLevel}
+              />
 
-                <div>
-                  <label className="block text-xs font-bold text-[#2A2621] uppercase tracking-wider mb-1">
-                    Capacity (Seats)
-                  </label>
-                  <input
-                    type="number"
-                    value={formCapacity}
-                    onChange={(e) => setFormCapacity(Number(e.target.value))}
-                    className="w-full bg-white rounded-xl border border-[#DFD8CC] px-3 py-2 text-xs text-[#1A1A1A] focus:outline-none focus:border-[#B55234]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-[#2A2621] uppercase tracking-wider mb-1">
-                    Floors
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="5"
-                    value={formFloors}
-                    onChange={(e) => setFormFloors(Number(e.target.value))}
-                    className="w-full bg-white rounded-xl border border-[#DFD8CC] px-3 py-2 text-xs text-[#1A1A1A] focus:outline-none focus:border-[#B55234]"
-                  />
-                </div>
-              </div>
+              <ImageUrlField
+                label="Logo link"
+                value={formLogo}
+                onChange={(value) => { setFormLogo(value); setFieldErrors((prev) => ({ ...prev, logoUrl: "" })); }}
+                error={fieldErrors.logoUrl}
+              />
 
               {/* Cover Photo Selection */}
               <div>
@@ -465,6 +486,20 @@ export function RestaurantProfileModal() {
                 </div>
               </div>
 
+              {saveError && (
+                <p role="alert" className="rounded-xl border border-[#F3DFD4] bg-[#FAF0EA] px-3 py-2 text-xs font-semibold text-[#B55234]">
+                  {saveError}
+                </p>
+              )}
+
+              <ImageUrlField
+                wide
+                label="Or a cover link"
+                value={formImage}
+                onChange={(value) => { setFormImage(value); setFieldErrors((prev) => ({ ...prev, coverUrl: "" })); }}
+                error={fieldErrors.coverUrl}
+              />
+
               <div className="pt-3 border-t border-[#ECE7DC] flex justify-end gap-2.5">
                 <button
                   type="button"
@@ -475,10 +510,11 @@ export function RestaurantProfileModal() {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-[#B55234] hover:bg-[#994127] active:scale-95 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
+                  disabled={saving}
+                  className="px-5 py-2 rounded-xl bg-[#B55234] hover:bg-[#994127] active:scale-95 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 disabled:opacity-60"
                 >
                   <Save className="w-3.5 h-3.5" />
-                  <span>Save Changes</span>
+                  <span>{saving ? "Saving..." : "Save Changes"}</span>
                 </button>
               </div>
             </form>
@@ -627,24 +663,8 @@ export function RestaurantProfileModal() {
                     </div>
                   </div>
 
-                  {/* Service Hours */}
-                  <div className="p-4 bg-white rounded-2xl border border-[#ECE7DC]">
-                    <div className="flex items-center gap-2 text-xs font-bold uppercase text-[#8C857B] mb-3">
-                      <Clock className="w-4 h-4 text-[#B55234]" />
-                      <span>Weekly Service Schedule</span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                      <div className="flex justify-between p-2 rounded-lg bg-[#FAF7F2]">
-                        <span className="font-semibold text-[#1A1A1A]">Monday – Friday</span>
-                        <span className="text-[#6B655D]">12:00 – 15:30 · 19:00 – 23:30</span>
-                      </div>
-                      <div className="flex justify-between p-2 rounded-lg bg-[#FAF7F2]">
-                        <span className="font-semibold text-[#1A1A1A]">Saturday – Sunday</span>
-                        <span className="text-[#6B655D]">11:30 – 16:00 · 19:00 – 00:00</span>
-                      </div>
-                    </div>
-                  </div>
+                  {/* Service hours: real, editable */}
+                  <HoursEditor key={selectedRest.id} restaurantId={selectedRest.id} />
                 </div>
               )}
 

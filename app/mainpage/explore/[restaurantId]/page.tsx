@@ -7,7 +7,12 @@ import { ArrowLeft, Clock, Loader2, MapPin, Phone } from "lucide-react";
 import { ApiError } from "@/contexts/AuthContext";
 import { apiGetDiscoverRestaurant } from "@/lib/discover/client";
 import type { DiscoverHours, DiscoverRestaurantDetail } from "@/lib/discover/types";
+import { describeHours } from "@/lib/restaurants/hours";
+import { priceLevelDescription, priceLevelLabel } from "@/lib/restaurants/price-level";
+import { FavoriteButton } from "../../_components/FavoriteButton";
+import { RatingBadge } from "../../_components/RatingStars";
 import { ReservationFlow } from "../../_components/ReservationFlow";
+import { ReviewsSection } from "../../_components/ReviewsSection";
 import { useRequireSignIn } from "../../_lib/useRequireSignIn";
 
 type Load =
@@ -104,16 +109,59 @@ export default function RestaurantDetailPage() {
 }
 
 function RestaurantDetail({ restaurant }: { restaurant: DiscoverRestaurantDetail }) {
+  // A dead cover or logo link falls back to a plain header instead of a broken image.
+  const [coverFailed, setCoverFailed] = useState(false);
+  const [logoFailed, setLogoFailed] = useState(false);
+  const price = priceLevelLabel(restaurant.priceLevel, restaurant.currency);
   return (
     <div className="space-y-6 pb-4">
       <header className="overflow-hidden rounded-2xl border border-[#E8E2D7] bg-white">
-        {restaurant.coverUrl ? (
+        {restaurant.coverUrl && !coverFailed ? (
           // Cover URLs come from arbitrary hosts, so next/image cannot optimise them.
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={restaurant.coverUrl} alt="" className="h-44 w-full object-cover sm:h-56" />
+          <img
+            src={restaurant.coverUrl}
+            alt=""
+            onError={() => setCoverFailed(true)}
+            className="h-44 w-full object-cover sm:h-56"
+          />
         ) : null}
         <div className="p-5">
-          <h1 className="text-2xl font-extrabold tracking-tight text-[#1A1A1A] sm:text-3xl">{restaurant.name}</h1>
+          <div className="flex items-start gap-3">
+            {restaurant.logoUrl && !logoFailed ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={restaurant.logoUrl}
+                alt=""
+                onError={() => setLogoFailed(true)}
+                className="h-14 w-14 shrink-0 rounded-2xl border border-[#E8E2D7] bg-white object-cover"
+              />
+            ) : null}
+            <div className="min-w-0">
+              <h1 className="text-2xl font-extrabold tracking-tight text-[#1A1A1A] sm:text-3xl">{restaurant.name}</h1>
+              {restaurant.cuisine || price || restaurant.reviewCount > 0 ? (
+                <p className="mt-1 flex flex-wrap items-center gap-x-3 text-sm text-[#524D48]">
+                  {restaurant.cuisine ? <span className="font-medium">{restaurant.cuisine}</span> : null}
+                  {price ? (
+                    <span
+                      className="font-bold text-[#B55234]"
+                      aria-label={priceLevelDescription(restaurant.priceLevel)}
+                      title={priceLevelDescription(restaurant.priceLevel)}
+                    >
+                      {price}
+                    </span>
+                  ) : null}
+                  <RatingBadge average={restaurant.averageRating} count={restaurant.reviewCount} />
+                </p>
+              ) : null}
+            </div>
+            <FavoriteButton
+              className="ml-auto shrink-0"
+              restaurantId={restaurant.id}
+              restaurantName={restaurant.name}
+              isFavorite={restaurant.isFavorite}
+            />
+          </div>
           <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-[#6B6661]">
             {restaurant.address || restaurant.city ? (
               <span className="inline-flex items-center gap-1">
@@ -139,6 +187,7 @@ function RestaurantDetail({ restaurant }: { restaurant: DiscoverRestaurantDetail
           <Suspense fallback={null}>
             <ReservationFlow key={restaurant.id} restaurant={restaurant} />
           </Suspense>
+          <ReviewsSection restaurantId={restaurant.id} />
         </div>
 
         <aside aria-labelledby="hours-title">
@@ -167,7 +216,7 @@ function HoursList({ hours }: { hours: DiscoverHours[] }) {
           <li key={dayOfWeek} className="flex items-center justify-between gap-3 px-4 py-2.5">
             <span className="font-medium text-[#1A1A1A]">{DAY_NAMES[dayOfWeek]}</span>
             <span className={closed ? "text-[#9E988F]" : "text-[#524D48]"}>
-              {closed ? "Closed" : `${day.openTime} – ${day.closeTime}`}
+              {closed ? "Closed" : describeHours(day)}
             </span>
           </li>
         );

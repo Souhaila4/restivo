@@ -1,5 +1,5 @@
 import { ApiError } from "@/lib/auth/client";
-import type { RestaurantRoster, RosterReview } from "./types";
+import type { RestaurantRoster, RosterMember, RosterReview } from "./types";
 
 function headers(accessToken: string, json = false): HeadersInit {
   return {
@@ -43,4 +43,20 @@ export async function apiReviewRequest(
   });
   const json = await handleResponse<{ review: RosterReview }>(res);
   return json.review;
+}
+
+export async function apiChangeRole(
+  accessToken: string,
+  restaurantId: string,
+  membershipId: string,
+  role: "MANAGER" | "STAFF"
+): Promise<RosterMember> {
+  const res = await fetch(`/api/restaurants/${restaurantId}/staff/${membershipId}/role`, {
+    method: "PATCH",
+    headers: headers(accessToken, true),
+    credentials: "include",
+    body: JSON.stringify({ role }),
+  });
+  const json = await handleResponse<{ member: RosterMember }>(res);
+  return json.member;
 }

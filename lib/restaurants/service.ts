@@ -11,7 +11,7 @@ import {
 } from "./publish";
 import { slugCandidate, slugifyRestaurantName } from "./slug";
 import { toPublicRestaurant, type PublicRestaurant } from "./serialize";
-import type { CreateRestaurantBody } from "./validation";
+import type { CreateRestaurantBody, UpdateHoursBody, UpdateRestaurantBody } from "./validation";
 
 const SLUG_ATTEMPTS = 12;
 
@@ -48,6 +48,9 @@ export async function createRestaurantForOwner(
         phone: input.phone ?? null,
         email: input.email ?? null,
         website: input.website ?? null,
+        cuisine: input.cuisine ?? null,
+        priceLevel: input.priceLevel ?? null,
+        logoUrl: input.logoUrl ?? null,
         coverUrl: input.coverUrl ?? null,
         address: input.address ?? null,
         city: input.city ?? null,
@@ -205,4 +208,128 @@ export async function listManagedRestaurants(userId: string): Promise<PublicRest
   }
 
   return result.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+const PROFILE_FIELDS = [
+  "name",
+  "description",
+  "address",
+  "city",
+  "country",
+  "postalCode",
+  "website",
+  "phone",
+  "email",
+  "cuisine",
+  "priceLevel",
+  "logoUrl",
+  "coverUrl",
+] as const;
+
+/**
+ * Edits the profile. Only the keys present in `input` are touched; an empty value
+ * clears an optional field. The slug is left alone so shared links keep working.
+ * The audit entry lists the names of the changed fields, never their values
+ * (phone and email are personal data).
+ */
+export async function updateRestaurantProfile(
+  userId: string,
+  restaurantId: string,
+  role: "OWNER" | "MANAGER",
+  input: UpdateRestaurantBody
+): Promise<PublicRestaurant> {
+  const updated = await db.transaction(async (tx) => {
+    const current = await tx.orm.public.Restaurant.where({ id: restaurantId }).first();
+    if (!current) throw new RestaurantError("NOT_FOUND", "Restaurant not found.");
+
+    const changes: Record<string, string | number | null> = {};
+    for (const field of PROFILE_FIELDS) {
+      const next = input[field];
+      if (next !== undefined && next !== current[field]) changes[field] = next;
+    }
+    if (changes.name === null) throw new RestaurantError("VALIDATION_ERROR", "Restaurant name is required.", "name");
+    const changed = Object.keys(changes);
+    if (changed.length === 0) return current;
+
+    const row = await tx.orm.public.Restaurant.where({ id: restaurantId }).update(changes);
+    await tx.orm.public.AuditLog.create({
+      userId,
+      restaurantId,
+      action: "UPDATE",
+      entityType: "Restaurant",
+      entityId: restaurantId,
+      metadata: { fields: changed },
+    });
+    return row ?? { ...current, ...changes };
+  });
+
+  const floors = await db.orm.public.Floor.where({ restaurantId }).all();
+  return toPublicRestaurant(updated, { role, floorsCount: floors.length });
+}
+
+export type PublicHoursDay = {
+  dayOfWeek: number;
+  isClosed: boolean;
+  openTime: string | null;
+  closeTime: string | null;
+};
+
+function hhmm(value: string | null): string | null {
+  return value ? value.slice(0, 5) : null;
+}
+
+/** The 7 weekly days, Sunday (0) to Saturday (6); a missing day reads as closed. */
+export async function getBusinessHours(restaurantId: string): Promise<PublicHoursDay[]> {
+  const rows = await db.orm.public.BusinessHours.where({ restaurantId }).all();
+  return [0, 1, 2, 3, 4, 5, 6].map((dayOfWeek) => {
+    const row = rows.find((entry) => entry.dayOfWeek === dayOfWeek);
+    return row && !row.isClosed
+      ? { dayOfWeek, isClosed: false, openTime: hhmm(row.openTime), closeTime: hhmm(row.closeTime) }
+      : { dayOfWeek, isClosed: true, openTime: null, closeTime: null };
+  });
+}
+
+/** Replaces the 7 days in one transaction and logs which weekdays changed. */
+export async function updateBusinessHours(
+  userId: string,
+  restaurantId: string,
+  input: UpdateHoursBody
+): Promise<PublicHoursDay[]> {
+  const before = await getBusinessHours(restaurantId);
+  const next = [...input.hours]
+    .sort((a, b) => a.dayOfWeek - b.dayOfWeek)
+    .map((day) => ({
+      dayOfWeek: day.dayOfWeek,
+      isClosed: day.isClosed,
+      openTime: day.isClosed ? null : day.openTime,
+      closeTime: day.isClosed ? null : day.closeTime,
+    }));
+  const changedDays = next
+    .filter((day, index) => JSON.stringify(day) !== JSON.stringify(before[index]))
+    .map((day) => day.dayOfWeek);
+
+  await db.transaction(async (tx) => {
+    for (const day of next) {
+      const existing = await tx.orm.public.BusinessHours.where({ restaurantId, dayOfWeek: day.dayOfWeek }).first();
+      if (existing) {
+        await tx.orm.public.BusinessHours.where({ id: existing.id }).update({
+          isClosed: day.isClosed,
+          openTime: day.openTime,
+          closeTime: day.closeTime,
+        });
+      } else {
+        await tx.orm.public.BusinessHours.create({ restaurantId, ...day });
+      }
+    }
+    await tx.orm.public.AuditLog.create({
+      userId,
+      restaurantId,
+      action: "UPDATE",
+      entityType: "BusinessHours",
+      entityId: restaurantId,
+      metadata: { fields: ["hours"], days: changedDays },
+    });
+  });
+
+  return getBusinessHours(restaurantId);
 }

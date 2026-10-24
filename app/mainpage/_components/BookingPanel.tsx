@@ -38,20 +38,29 @@ export function BookingPanel({
   onConfirm,
   busy = false,
   notice = null,
+  initial,
+  change,
 }: {
   restaurant: DiscoverRestaurantDetail;
-  onExplore: (selection: BookingSelection) => void;
-  onConfirm: (selection: BookingSelection) => void;
+  onExplore?: (selection: BookingSelection) => void;
+  onConfirm?: (selection: BookingSelection) => void;
   busy?: boolean;
   notice?: { id: number; message: string } | null;
+  /** Starting values: the current reservation when it is being changed. */
+  initial?: { tableId: string; date: string; time: string; guests: number; notes: string };
+  /**
+   * Changing an existing reservation: its own slot does not count as taken, and the two
+   * booking buttons become one "Save changes".
+   */
+  change?: { reservationId: string; onSave: (selection: BookingSelection) => void; error?: string | null };
 }) {
   const { getFreshAccessToken } = useRequireSignIn();
   const [floorId, setFloorId] = useState(restaurant.floors[0]?.id ?? null);
-  const [date, setDate] = useState("");
-  const [time, setTime] = useState("");
-  const [guests, setGuests] = useState(2);
-  const [notes, setNotes] = useState("");
-  const [tableId, setTableId] = useState<string | null>(null);
+  const [date, setDate] = useState(initial?.date ?? "");
+  const [time, setTime] = useState(initial?.time ?? "");
+  const [guests, setGuests] = useState(initial?.guests ?? 2);
+  const [notes, setNotes] = useState(initial?.notes ?? "");
+  const [tableId, setTableId] = useState<string | null>(initial?.tableId ?? null);
   const [refresh, setRefresh] = useState(0);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -64,6 +73,7 @@ export function BookingPanel({
     setProblem(notice.message);
   }
 
+  const excludeId = change?.reservationId;
   const timezone = restaurant.timezone;
   const minDate = useMemo(() => localDateInDays(timezone, 0), [timezone]);
   const maxDate = useMemo(() => localDateInDays(timezone, MAX_DAYS_AHEAD), [timezone]);
@@ -78,7 +88,12 @@ export function BookingPanel({
       try {
         const token = await getFreshAccessToken();
         if (!token) return;
-        const availability = await apiGetAvailability(token, restaurant.id, { date, time, guests }, controller.signal);
+        const availability = await apiGetAvailability(
+          token,
+          restaurant.id,
+          { date, time, guests, ...(excludeId ? { exclude: excludeId } : {}) },
+          controller.signal,
+        );
         if (!controller.signal.aborted) setLoaded({ key, availability });
       } catch (err) {
         if (controller.signal.aborted) return;
@@ -89,7 +104,7 @@ export function BookingPanel({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [ready, date, time, guests, key, restaurant.id, getFreshAccessToken]);
+  }, [ready, date, time, guests, key, restaurant.id, excludeId, getFreshAccessToken]);
 
   const current = ready && loaded && loaded.key === key ? loaded : null;
   const availability = current && "availability" in current ? current.availability : null;
@@ -116,7 +131,7 @@ export function BookingPanel({
     <section aria-labelledby="plan-title" className="min-w-0 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 id="plan-title" className="text-base font-bold text-[#1A1A1A] sm:text-lg">
-          Book a table
+          {change ? "Change your reservation" : "Book a table"}
         </h2>
         {restaurant.floors.length > 1 ? (
           <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Floors">
@@ -237,11 +252,29 @@ export function BookingPanel({
                 <dd className="font-semibold">{selection.guests}</dd>
               </div>
             </dl>
+            {change ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => change.onSave(selection)}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-[#B55234] px-5 py-2.5 text-xs font-semibold text-white shadow-sm transition-all hover:bg-[#9E4328] active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B55234] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : null}
+                  Save changes
+                </button>
+                {change.error ? (
+                  <p className="text-xs font-medium text-[#B55234]" role="alert">
+                    {change.error}
+                  </p>
+                ) : null}
+              </div>
+            ) : (
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => onExplore(selection)}
+                onClick={() => onExplore?.(selection)}
                 className="inline-flex items-center gap-1.5 rounded-full bg-[#B55234] px-5 py-2.5 text-xs font-semibold text-white shadow-sm transition-all hover:bg-[#9E4328] active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B55234] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <UtensilsCrossed className="h-3.5 w-3.5" aria-hidden="true" />
@@ -250,13 +283,14 @@ export function BookingPanel({
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => onConfirm(selection)}
+                onClick={() => onConfirm?.(selection)}
                 className="inline-flex items-center gap-1.5 rounded-full border border-[#D8D2C5] bg-white px-5 py-2.5 text-xs font-semibold text-[#423E3A] transition-all hover:bg-black/5 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B55234] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                 Confirm reservation
               </button>
             </div>
+            )}
           </div>
         ) : (
           <p className="text-xs text-[#9E988F] sm:col-span-3">Select a free table on the plan.</p>

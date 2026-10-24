@@ -16,3 +16,6 @@ export const BLOCKING_STATUSES = ["PENDING", "CONFIRMED", "SEATED"] as const;
 
 /** A customer may cancel only these, and only while the slot is still ahead. */
 export const CANCELLABLE_STATUSES = ["PENDING", "CONFIRMED"] as const;
+
+/** A customer may change these only, and only while the slot is still ahead. */
+export const EDITABLE_STATUSES = ["PENDING", "CONFIRMED"] as const;

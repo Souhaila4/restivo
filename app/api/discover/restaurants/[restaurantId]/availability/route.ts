@@ -1,7 +1,8 @@
 /**
  * GET /api/discover/restaurants/:id/availability?date=YYYY-MM-DD&time=HH:MM&guests=
  *
- * Date and time are in the restaurant timezone.
+ * Date and time are in the restaurant timezone. With `&exclude=<reservationId>` (the customer's
+ * own reservation, while changing it) that reservation does not count as taken.
  */
 import { requireActiveUser } from "@/lib/auth/active-user";
 import { toReservationErrorResponse } from "@/lib/reservations/errors";
@@ -14,10 +15,17 @@ type RouteContext = { params: Promise<{ restaurantId: string }> };
 
 export async function GET(request: Request, context: RouteContext): Promise<Response> {
   try {
-    await requireActiveUser(request);
+    const user = await requireActiveUser(request);
     const { restaurantId } = await context.params;
     const query = parseAvailabilityQuery(request.url);
-    const availability = await getAvailability(restaurantId, query.date, query.time, query.guests);
+    const exclude = new URL(request.url).searchParams.get("exclude");
+    const availability = await getAvailability(
+      restaurantId,
+      query.date,
+      query.time,
+      query.guests,
+      exclude ? { reservationId: exclude, userId: user.id } : undefined,
+    );
     return Response.json({ ok: true, availability });
   } catch (err) {
     return toReservationErrorResponse(err);

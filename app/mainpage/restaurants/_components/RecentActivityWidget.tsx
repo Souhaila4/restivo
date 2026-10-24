@@ -1,81 +1,30 @@
 "use client";
 
-import React from "react";
-import {
-  CalendarDays,
-  ShoppingBag,
-  Sparkles,
-  Star,
-  ArrowRight,
-  Clock,
-  CheckCircle,
-} from "lucide-react";
-
-interface ActivityItem {
-  id: string;
-  icon: React.ReactNode;
-  iconBg: string;
-  iconColor: string;
-  title: string;
-  subtitle: string;
-  badgeDot: string;
-  time: string;
-}
-
-const ACTIVITIES: ActivityItem[] = [
-  {
-    id: "1",
-    icon: <CalendarDays className="w-4 h-4" />,
-    iconBg: "bg-[#FAF0EA]",
-    iconColor: "text-[#B55234]",
-    title: "New reservation",
-    subtitle: "Table 12 · 4 guests",
-    badgeDot: "bg-[#2E7D32]",
-    time: "12:00",
-  },
-  {
-    id: "2",
-    icon: <ShoppingBag className="w-4 h-4" />,
-    iconBg: "bg-[#FDF0E6]",
-    iconColor: "text-[#D96B27]",
-    title: "Order updated",
-    subtitle: "Table 07 · 2 items",
-    badgeDot: "bg-[#D96B27]",
-    time: "10:45",
-  },
-  {
-    id: "3",
-    icon: <Sparkles className="w-4 h-4" />,
-    iconBg: "bg-[#F0F4F8]",
-    iconColor: "text-[#4A5568]",
-    title: "Table cleaned",
-    subtitle: "Table 03",
-    badgeDot: "bg-[#718096]",
-    time: "10:32",
-  },
-  {
-    id: "4",
-    icon: <Star className="w-4 h-4 fill-amber-400 text-amber-400" />,
-    iconBg: "bg-[#FEF9C3]",
-    iconColor: "text-amber-600",
-    title: "New review",
-    subtitle: "5 stars · Sarah",
-    badgeDot: "bg-amber-500",
-    time: "09:15",
-  },
-];
+import React, { useCallback } from "react";
+import { ArrowRight, CalendarDays, ShoppingBag } from "lucide-react";
+import { apiManagerActivity } from "@/lib/manager/client";
+import { formatSlotDate, formatSlotTime } from "@/lib/reservations/format";
+import { useManagerQuery } from "../_lib/use-manager-query";
 
 interface RecentActivityWidgetProps {
+  restaurantId: string;
+  timezone: string;
   onViewAll?: () => void;
 }
 
-export function RecentActivityWidget({ onViewAll }: RecentActivityWidgetProps) {
+const VISIBLE_CARDS = 4;
+
+export function RecentActivityWidget({ restaurantId, timezone, onViewAll }: RecentActivityWidgetProps) {
+  const fetcher = useCallback((token: string) => apiManagerActivity(token, restaurantId), [restaurantId]);
+  const { data, error, loading, refresh } = useManagerQuery(fetcher);
+  const items = (data ?? []).slice(0, VISIBLE_CARDS);
+
   return (
     <div className="flex flex-col">
-      {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-base font-bold text-[#1A1A1A]">Recent activity</h3>
         <button
+          type="button"
           onClick={onViewAll}
           className="text-xs font-semibold text-[#B55234] hover:text-[#943F25] transition-colors flex items-center gap-1 group"
         >
@@ -84,38 +33,46 @@ export function RecentActivityWidget({ onViewAll }: RecentActivityWidgetProps) {
         </button>
       </div>
 
-      {/* 4 Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {ACTIVITIES.map((act) => (
-          <div
-            key={act.id}
-            className="bg-white rounded-2xl border border-[#EDE7DC] hover:border-[#DFD5C4] p-3.5 flex items-center gap-3 transition-all hover:shadow-xs group cursor-pointer"
-          >
-            {/* Icon Box */}
+      {error && !data ? (
+        <p role="alert" className="text-xs text-[#B55234]">
+          {error}{" "}
+          <button type="button" onClick={refresh} className="font-bold underline">
+            Try again
+          </button>
+        </p>
+      ) : loading ? (
+        <p className="py-4 text-xs text-[#736D65]" role="status">
+          Loading...
+        </p>
+      ) : items.length === 0 ? (
+        <p className="rounded-2xl border border-[#EDE7DC] bg-white py-6 text-center text-xs text-[#736D65]">
+          No activity yet. Reservations and orders will show up here.
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {items.map((item) => (
             <div
-              className={`w-9 h-9 rounded-xl ${act.iconBg} ${act.iconColor} flex items-center justify-center shrink-0 border border-black/5 group-hover:scale-105 transition-transform`}
+              key={item.id}
+              className="bg-white rounded-2xl border border-[#EDE7DC] p-3.5 flex items-center gap-3 hover:border-[#DFD5C4] transition-all"
             >
-              {act.icon}
-            </div>
-
-            {/* Info */}
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-bold text-[#1A1A1A] truncate">
-                {act.title}
-              </p>
-              <p className="text-[11px] text-[#7A746B] truncate mt-0.5">
-                {act.subtitle}
-              </p>
-              <div className="flex items-center gap-1.5 mt-1">
-                <span className={`w-1.5 h-1.5 rounded-full ${act.badgeDot}`} />
-                <span className="text-[10px] text-[#8C857B] font-medium">
-                  {act.time}
-                </span>
+              <div
+                className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border border-black/5 ${
+                  item.kind === "reservation" ? "bg-[#FAF0EA] text-[#B55234]" : "bg-[#FDF0E6] text-[#D96B27]"
+                }`}
+              >
+                {item.kind === "reservation" ? <CalendarDays className="w-4 h-4" /> : <ShoppingBag className="w-4 h-4" />}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-bold text-[#1A1A1A] truncate">{item.title}</p>
+                <p className="text-[11px] text-[#7A746B] truncate mt-0.5">{item.subtitle}</p>
+                <p className="text-[10px] text-[#8C857B] font-medium mt-1">
+                  {formatSlotDate(item.at, timezone)} · {formatSlotTime(item.at, timezone)}
+                </p>
               </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

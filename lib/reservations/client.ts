@@ -22,11 +22,12 @@ function bearer(accessToken: string) {
 export async function apiGetAvailability(
   accessToken: string,
   restaurantId: string,
-  query: { date: string; time: string; guests?: number },
+  query: { date: string; time: string; guests?: number; exclude?: string },
   signal?: AbortSignal,
 ): Promise<Availability> {
   const params = new URLSearchParams({ date: query.date, time: query.time });
   if (query.guests) params.set("guests", String(query.guests));
+  if (query.exclude) params.set("exclude", query.exclude);
   const res = await fetch(
     `/api/discover/restaurants/${encodeURIComponent(restaurantId)}/availability?${params}`,
     { headers: bearer(accessToken), credentials: "include", signal },
@@ -78,4 +79,26 @@ export async function apiCancelReservation(
   });
   const json = await handleResponse<{ reservation: PublicReservation; cancelledOrders: number }>(res);
   return { reservation: json.reservation, cancelledOrders: json.cancelledOrders };
+}
+
+export type ReservationChangeInput = {
+  tableId: string;
+  date: string;
+  time: string;
+  guestCount: number;
+  notes?: string;
+};
+
+export async function apiUpdateReservation(
+  accessToken: string,
+  reservationId: string,
+  input: ReservationChangeInput,
+): Promise<PublicReservation> {
+  const res = await fetch(`/api/reservations/${encodeURIComponent(reservationId)}`, {
+    method: "PATCH",
+    headers: { ...bearer(accessToken), "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(input),
+  });
+  return (await handleResponse<{ reservation: PublicReservation }>(res)).reservation;
 }

@@ -12,6 +12,10 @@ export type PublicReservation = {
   restaurant: { id: string; name: string; city: string | null; timezone: string };
   table: { id: string; name: string };
   canCancel: boolean;
+  /** True when the restaurant, not the customer, cancelled it. */
+  cancelledByRestaurant: boolean;
+  /** The customer's own review of this reservation, when they left one. */
+  review: { rating: number } | null;
 };
 
 export type TableAvailability = {

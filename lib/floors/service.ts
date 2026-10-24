@@ -1,5 +1,8 @@
 import { db } from "@/lib/db";
-import { isPgUniqueViolation } from "@/lib/auth/errors";
+import { advisoryXactLock } from "@/lib/locks";
+import { publishBlocker, type PublishFloor } from "@/lib/restaurants/publish";
+import { deactivationBlocker, holdsTable } from "./active";
+import { isPgForeignKeyViolation, isPgUniqueViolation } from "@/lib/auth/errors";
 import { RestaurantError } from "@/lib/restaurants/errors";
 import { isFloorObjectType, objectCapacity, type FloorObject } from "@/app/mainpage/restaurants/tables/_components/floor-plan/floor-object";
 import {
@@ -84,6 +87,71 @@ export async function duplicateFloor(userId: string, restaurantId: string, floor
     objects: loaded.objects.map(withNewId),
     publish: source.isActive,
   });
+}
+
+/**
+ * Switches a floor on or off. A floor that holds an upcoming or current reservation
+ * on one of its tables stays on, and so does the last floor that keeps a published
+ * restaurant bookable. The tables are locked in a fixed order (as bookings lock them)
+ * so a booking cannot slip in between the check and the update.
+ */
+export async function setFloorActive(
+  userId: string,
+  restaurantId: string,
+  floorId: string,
+  isActive: boolean,
+): Promise<PublicFloor[]> {
+  const floor = await requireFloor(restaurantId, floorId);
+  if (floor.isActive === isActive) return listFloors(restaurantId);
+
+  await db.transaction(async (tx) => {
+    if (!isActive) {
+      const tables = await tx.orm.public.Table.where({ floorId: floor.id }).all();
+      for (const id of tables.map((table) => table.id).sort()) {
+        await advisoryXactLock(tx, `reservation-table:${id}`);
+      }
+
+      const nowMs = Date.now();
+      let holding = 0;
+      for (const table of tables) {
+        const rows = await tx.orm.public.Reservation.where({ tableId: table.id }).all();
+        holding += rows.filter((row) => holdsTable(row.status, Date.parse(String(row.endsAt)), nowMs)).length;
+      }
+
+      const restaurant = await tx.orm.public.Restaurant.where({ id: restaurantId }).first();
+      const others = (await tx.orm.public.Floor.where({ restaurantId }).all()).filter((other) => other.id !== floor.id);
+      const summary: PublishFloor[] = [];
+      for (const other of others) {
+        const active = await tx.orm.public.Table.where({ floorId: other.id, isActive: true }).all();
+        summary.push({ isActive: other.isActive, activeTableCount: active.length });
+      }
+
+      const blocker = deactivationBlocker({
+        restaurantStatus: restaurant?.status ?? "DRAFT",
+        holdingReservations: holding,
+        othersKeepItPublishable: publishBlocker(summary) === null,
+      });
+      if (blocker === "HAS_RESERVATIONS") {
+        throw new RestaurantError(
+          "FLOOR_HAS_RESERVATIONS",
+          `${holding} upcoming or current ${holding === 1 ? "reservation is" : "reservations are"} on this floor. Move or cancel ${holding === 1 ? "it" : "them"} first.`,
+        );
+      }
+      if (blocker === "LAST_ACTIVE_FLOOR") throw new RestaurantError("LAST_ACTIVE_FLOOR");
+    }
+
+    await tx.orm.public.Floor.where({ id: floor.id }).update({ isActive });
+    await tx.orm.public.AuditLog.create({
+      userId,
+      restaurantId,
+      action: "STATUS_CHANGE",
+      entityType: "Floor",
+      entityId: floor.id,
+      metadata: { name: floor.name, isActive },
+    });
+  });
+
+  return listFloors(restaurantId);
 }
 
 export async function reorderFloor(userId: string, restaurantId: string, floorId: string): Promise<PublicFloor[]> {
@@ -318,5 +386,5 @@ function decimal(value: number) {
 }
 
 function isForeignKeyViolation(err: unknown) {
-  return typeof err === "object" && err !== null && "code" in err && (err as { code: unknown }).code === "23503";
+  return isPgForeignKeyViolation(err);
 }

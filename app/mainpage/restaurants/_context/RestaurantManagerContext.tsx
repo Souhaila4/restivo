@@ -25,6 +25,9 @@ export interface ManagedRestaurant {
   status: "Open" | "Closed" | "Break";
   image: string;
   logoUrl?: string | null;
+  /** The stored cover link; `image` falls back to a built-in photo when it is empty. */
+  coverUrl?: string | null;
+  priceLevel?: number | null;
   description?: string;
   phone?: string;
   email?: string;
@@ -40,87 +43,6 @@ export interface ManagedRestaurant {
   createdAt?: string | null;
 }
 
-export const FALLBACK_RESTAURANTS: ManagedRestaurant[] = [
-  {
-    id: "maison-olive",
-    name: "Maison Olive",
-    location: "Les Berges du Lac II, Tunis",
-    city: "Tunis",
-    address: "Rue du Lac Windermere, Les Berges du Lac II",
-    country: "Tunisia",
-    cuisine: "Tunisian & Mediterranean",
-    role: "Owner",
-    status: "Open",
-    image: "/images/restaurant-ambient.jpg",
-    logoUrl: "/images/restaurant-ambient.jpg",
-    description: "An authentic culinary destination blending ancestral Mediterranean recipes with contemporary gastronomic artistry, featuring an olive-tree courtyard and panoramic terrace.",
-    phone: "+216 71 860 120",
-    email: "contact@maisonolive.tn",
-    website: "https://maisonolive.restivo.app",
-    currency: "TND",
-    timezone: "Africa/Tunis",
-    tablesCount: 24,
-    capacity: 96,
-    floorsCount: 2,
-    rating: 4.8,
-    slug: "maison-olive",
-    dbStatus: "ACTIVE",
-    createdAt: "2024-01-15",
-  },
-  {
-    id: "dar-el-marsa",
-    name: "Dar El Marsa",
-    location: "Corniche de La Marsa, Tunis",
-    city: "La Marsa",
-    address: "75 Avenue Habib Bourguiba, La Marsa",
-    country: "Tunisia",
-    cuisine: "Seafood & Mediterranean Grill",
-    role: "Owner",
-    status: "Open",
-    image: "/images/dar-el-marsa.jpg",
-    logoUrl: "/images/dar-el-marsa.jpg",
-    description: "Seaside gastronomic dining with breathtaking Gulf of Tunis views, celebrating fresh Mediterranean catches, sun-kissed citrus marinades, and artisanal pastries.",
-    phone: "+216 71 728 000",
-    email: "welcome@darelmarsa.tn",
-    website: "https://darelmarsa.restivo.app",
-    currency: "TND",
-    timezone: "Africa/Tunis",
-    tablesCount: 18,
-    capacity: 72,
-    floorsCount: 1,
-    rating: 4.6,
-    slug: "dar-el-marsa",
-    dbStatus: "ACTIVE",
-    createdAt: "2024-03-20",
-  },
-  {
-    id: "le-comptoir",
-    name: "Le Comptoir",
-    location: "Centre Ville, Tunis",
-    city: "Tunis",
-    address: "18 Rue de Marseille, Tunis",
-    country: "Tunisia",
-    cuisine: "French Haute Cuisine & Fine Dining",
-    role: "Manager",
-    status: "Open",
-    image: "/images/le-comptoir.jpg",
-    logoUrl: "/images/le-comptoir.jpg",
-    description: "Cosmopolitan brasserie and lounge in downtown Tunis renowned for dry-aged cuts, decadent truffle risottos, and an extensive sommelier wine cellar.",
-    phone: "+216 71 345 678",
-    email: "reservation@lecomptoir.tn",
-    website: "https://lecomptoir.restivo.app",
-    currency: "TND",
-    timezone: "Africa/Tunis",
-    tablesCount: 30,
-    capacity: 110,
-    floorsCount: 2,
-    rating: 4.7,
-    slug: "le-comptoir",
-    dbStatus: "ACTIVE",
-    createdAt: "2024-02-10",
-  },
-];
-
 export function toManagedRestaurant(row: PublicRestaurant): ManagedRestaurant {
   const location =
     [row.address, row.city, row.country].filter(Boolean).join(", ") ||
@@ -134,15 +56,17 @@ export function toManagedRestaurant(row: PublicRestaurant): ManagedRestaurant {
     city: row.city ?? "Tunis",
     address: row.address ?? "",
     country: row.country ?? "Tunisia",
-    cuisine: row.description?.slice(0, 48) || "Tunisian & Mediterranean",
+    cuisine: row.cuisine ?? "",
     role: row.role === "OWNER" ? "Owner" : "Manager",
     status: row.status === "ACTIVE" ? "Open" : "Closed",
     image: row.coverUrl || "/images/restaurant-ambient.jpg",
     logoUrl: row.logoUrl || null,
-    description: row.description || "Authentic dining venue managed with Restivo hospitality platform.",
-    phone: row.phone ?? "+216 71 800 900",
-    email: row.email ?? `contact@${row.slug || "restivo"}.tn`,
-    website: row.website ?? `https://${row.slug || "venue"}.restivo.app`,
+    coverUrl: row.coverUrl || null,
+    priceLevel: row.priceLevel ?? null,
+    description: row.description ?? "",
+    phone: row.phone ?? "",
+    email: row.email ?? "",
+    website: row.website ?? "",
     currency: row.currency || "TND",
     timezone: row.timezone || "Africa/Tunis",
     tablesCount: row.tablesCount || 20,
@@ -162,6 +86,9 @@ interface RestaurantManagerContextType {
   upsertRestaurant: (rest: ManagedRestaurant) => void;
   updateRestaurantProfile: (id: string, updates: Partial<ManagedRestaurant>) => void;
   isLoadingRestaurants: boolean;
+  /** Set when the restaurant list could not be loaded; `reloadRestaurants` tries again. */
+  loadError: string | null;
+  reloadRestaurants: () => void;
   isAddRestaurantOpen: boolean;
   setIsAddRestaurantOpen: (open: boolean) => void;
   isProfileModalOpen: boolean;
@@ -182,12 +109,14 @@ interface RestaurantManagerContextType {
 const RestaurantManagerContext = createContext<RestaurantManagerContextType | null>(null);
 
 const EMPTY: RestaurantManagerContextType = {
-  restaurants: FALLBACK_RESTAURANTS,
-  currentRestaurant: FALLBACK_RESTAURANTS[0],
+  restaurants: [],
+  currentRestaurant: null,
   setCurrentRestaurant: () => {},
   upsertRestaurant: () => {},
   updateRestaurantProfile: () => {},
   isLoadingRestaurants: false,
+  loadError: null,
+  reloadRestaurants: () => {},
   isAddRestaurantOpen: false,
   setIsAddRestaurantOpen: () => {},
   isProfileModalOpen: false,
@@ -210,6 +139,9 @@ export function RestaurantManagerProvider({ children }: { children: React.ReactN
   const [restaurants, setRestaurants] = useState<ManagedRestaurant[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [isLoadingRestaurants, setIsLoadingRestaurants] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const reloadRestaurants = useCallback(() => setReloadKey((key) => key + 1), []);
   const [isAddRestaurantOpen, setIsAddRestaurantOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [profileModalRestaurant, setProfileModalRestaurant] = useState<ManagedRestaurant | null>(null);
@@ -226,28 +158,29 @@ export function RestaurantManagerProvider({ children }: { children: React.ReactN
   useEffect(() => {
     if (!isReady) return;
     if (!user?.canManageRestaurants) {
-      setRestaurants(FALLBACK_RESTAURANTS);
-      setCurrentId(FALLBACK_RESTAURANTS[0].id);
+      setRestaurants([]);
+      setCurrentId(null);
       setIsLoadingRestaurants(false);
       return;
     }
 
     const token = getAccessToken();
     if (!token) {
-      setRestaurants(FALLBACK_RESTAURANTS);
-      setCurrentId(FALLBACK_RESTAURANTS[0].id);
+      setRestaurants([]);
+      setCurrentId(null);
+      setLoadError("Your session expired. Sign in again.");
       setIsLoadingRestaurants(false);
       return;
     }
 
     let cancelled = false;
     setIsLoadingRestaurants(true);
+    setLoadError(null);
 
     apiListRestaurants(token)
       .then((rows) => {
         if (cancelled) return;
-        const mapped = rows.map(toManagedRestaurant);
-        const finalList = mapped.length > 0 ? mapped : FALLBACK_RESTAURANTS;
+        const finalList = rows.map(toManagedRestaurant);
         setRestaurants(finalList);
         setCurrentId((prev) => {
           if (prev && finalList.some((row) => row.id === prev)) return prev;
@@ -256,8 +189,9 @@ export function RestaurantManagerProvider({ children }: { children: React.ReactN
       })
       .catch(() => {
         if (!cancelled) {
-          setRestaurants(FALLBACK_RESTAURANTS);
-          setCurrentId(FALLBACK_RESTAURANTS[0].id);
+          setRestaurants([]);
+          setCurrentId(null);
+          setLoadError("Could not load your restaurants.");
         }
       })
       .finally(() => {
@@ -267,7 +201,7 @@ export function RestaurantManagerProvider({ children }: { children: React.ReactN
     return () => {
       cancelled = true;
     };
-  }, [isReady, user?.canManageRestaurants, user?.id, getAccessToken]);
+  }, [isReady, user?.canManageRestaurants, user?.id, getAccessToken, reloadKey]);
 
   const setCurrentRestaurant = useCallback((rest: ManagedRestaurant) => {
     setCurrentId(rest.id);
@@ -305,6 +239,8 @@ export function RestaurantManagerProvider({ children }: { children: React.ReactN
         upsertRestaurant,
         updateRestaurantProfile,
         isLoadingRestaurants,
+        loadError,
+        reloadRestaurants,
         isAddRestaurantOpen,
         setIsAddRestaurantOpen,
         isProfileModalOpen,
