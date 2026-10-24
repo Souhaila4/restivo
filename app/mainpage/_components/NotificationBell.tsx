@@ -25,6 +25,7 @@ function timeAgo(iso: string, nowMs: number): string {
 
 /** Where a notification leads: the customer pages list their own reservations and orders. */
 function targetOf(item: PublicNotification): string {
+  if (item.data?.alertKey) return "/mainpage/restaurants/live";
   if (item.type === "STAFF_REQUEST") return item.data?.role === "MANAGER" ? "/mainpage/restaurants" : "/mainpage/staff";
   if (item.data?.orderId) return "/mainpage/orders";
   return "/mainpage/reservations";

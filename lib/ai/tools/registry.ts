@@ -78,6 +78,8 @@ const TOOL_LABELS: Record<string, string> = {
   get_floors: "Floors",
   get_menu: "Menu",
   get_staff: "Staff",
+  get_reservations: "Reservations",
+  get_tables_status: "Tables now",
 };
 
 export function describeSource(tool: string, data: unknown): AnswerSource {
@@ -124,6 +126,31 @@ export function describeSource(tool: string, data: unknown): AnswerSource {
     };
   }
 
+  if (tool === "get_reservations") {
+    const count = asNumber(row.count);
+    const day = typeof row.from === "string" ? row.from : null;
+    return {
+      tool,
+      label,
+      metric: count === null ? "Reservation query" : `${count} ${count === 1 ? "reservation" : "reservations"}${day ? ` on ${day}` : ""}`,
+      records: reservationNames(row.reservations),
+      context,
+    };
+  }
+
+  if (tool === "get_tables_status") {
+    const tables = asNumber(row.tableCount);
+    const counts = isRecord(row.counts) ? row.counts : {};
+    const busy = (asNumber(counts.OCCUPIED) ?? 0) + (asNumber(counts.OVERDUE) ?? 0);
+    return {
+      tool,
+      label,
+      metric: tables === null ? "Table status query" : `${tables} tables, ${busy} occupied`,
+      records: tableNames(row.tables),
+      context,
+    };
+  }
+
   return {
     tool,
     label,
@@ -143,6 +170,22 @@ function floorNames(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value
     .map((floor) => (isRecord(floor) && typeof floor.name === "string" ? floor.name : ""))
+    .filter(Boolean)
+    .slice(0, 4);
+}
+
+function reservationNames(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => (isRecord(entry) && typeof entry.customer === "string" ? entry.customer : ""))
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
+function tableNames(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => (isRecord(entry) && typeof entry.name === "string" ? entry.name : ""))
     .filter(Boolean)
     .slice(0, 4);
 }

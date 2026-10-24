@@ -6,6 +6,7 @@ import Link from "next/link";
 import {
   LayoutDashboard,
   CalendarDays,
+  Radio,
   BookOpen,
   Armchair,
   Users2,
@@ -31,6 +32,7 @@ const RESTAURANTS_ROOT = "/mainpage/restaurants";
 const NAV_ITEMS = [
   { id: "overview", label: "Overview", icon: LayoutDashboard, href: RESTAURANTS_ROOT },
   { id: "reservations", label: "Reservations & orders", icon: CalendarDays, href: `${RESTAURANTS_ROOT}/reservations` },
+  { id: "live", label: "Live floor", icon: Radio, href: `${RESTAURANTS_ROOT}/live` },
   { id: "menu", label: "Menu", icon: BookOpen, href: `${RESTAURANTS_ROOT}/menu` },
   { id: "tables", label: "Tables", icon: Armchair, href: `${RESTAURANTS_ROOT}/tables` },
   { id: "staff", label: "Staff", icon: Users2, href: `${RESTAURANTS_ROOT}/staff` },

@@ -72,7 +72,9 @@ Le contexte géographique visé semble être la **Tunisie** : devise par défaut
 | Tableau de bord gérant (cartes de stats, réservations du jour, commandes en direct, activité récente) | ✅ Fonctionnelle : données réelles, rafraîchies toutes les 30 s (le plan de salle du tableau de bord reste une maquette) | `/api/restaurants/:id/{stats,reservations,orders,activity}`, `restaurants/_components/*Widget.tsx` |
 | Réservations et commandes côté gérant (liste par jour, filtres, changements de statut, annulation en cascade) | ✅ Fonctionnelle (voir §4.2 f) | `/mainpage/restaurants/reservations`, `PATCH /api/restaurants/:id/{reservations,orders}/:id/status` |
 | Notifications du client (cloche, carte « Your next reservation ») | ✅ Fonctionnelle (voir §9) | `/api/notifications`, `NotificationBell.tsx`, `NextReservationCard.tsx` |
-| Tableau de service du personnel (commandes) | ⚠️ Données statiques en mémoire | `staff/_lib/board.ts` |
+| Salle en direct côté gérant (plan 2D coloré par état, panneau de table, Seat / Complete / No-show, chronomètres) | ✅ Fonctionnelle, rafraîchie toutes les 20 s (voir §4.2 g) | `GET /api/restaurants/:id/live`, `/mainpage/restaurants/live`, `LiveFloorPlan.tsx`, `lib/live/*` |
+| Alertes de salle (client attendu, no-show possible, table qui dépasse) vers les gérants | ✅ Fonctionnelle, sans doublon (voir §4.2 g) | `lib/live/alerts*.ts`, `NotificationBell.tsx`, `LiveAlertsPulse.tsx` |
+| Espace du personnel (réservations du jour, Seat / Complete, commandes PREPARING → READY → DELIVERED) | ✅ Fonctionnelle : données réelles, réservé aux STAFF actifs du restaurant | `/api/staff/restaurants/:id/{reservations,orders}`, `app/mainpage/staff`, `lib/staff/board-*.ts` |
 | Favoris du client (cœur sur les cartes et la fiche, page *Favorites*) | ✅ Fonctionnelle | `GET` et `POST /api/favorites`, `/api/favorites/:restaurantId`, `FavoriteButton.tsx`, `app/mainpage/favorites` |
 | Avis du client (note de 1 à 5, commentaire, note moyenne sur les cartes et la fiche) | ✅ Fonctionnelle (voir §9) | `POST /api/reservations/:id/review`, `GET /api/discover/restaurants/:id/reviews`, `ReviewForm.tsx`, `ReviewsSection.tsx` |
 | Modification d'une réservation à venir (date, heure, table, invités, notes) | ✅ Fonctionnelle (voir §9) | `PATCH /api/reservations/:id`, `ChangeReservationFlow.tsx`, bouton *Change* de `/mainpage/reservations` |
@@ -162,6 +164,7 @@ restivo-V1-main/
 │   │   │       ├── promotions/  # CRUD promotions
 │   │   │       ├── reservations/ # liste du gérant (jour, plage, statut) + [reservationId]/status
 │   │   │       ├── orders/      # liste des précommandes + [orderId]/status
+│   │   │       ├── live/        # GET : état en direct des tables des étages actifs (crée aussi les alertes dues)
 │   │   │       ├── stats/       # compteurs du jour (réservations, couverts, commandes, chiffre d'affaires)
 │   │   │       ├── activity/    # derniers événements réservations/commandes (AuditLog)
 │   │   │       ├── staff/       # équipe + requests/[requestId] (accepter/refuser) + [membershipId]/role (MANAGER ⇄ STAFF, OWNER seulement)
@@ -172,6 +175,7 @@ restivo-V1-main/
 │   │   ├── orders/              # précommandes du client (POST, GET)
 │   │   ├── notifications/       # notifications du client : GET, et POST /read (une ou toutes)
 │   │   ├── staff/join/          # côté employé : tableau d'adhésion + envoi de demande
+│   │   ├── staff/restaurants/[restaurantId]/ # côté employé : reservations, orders et leurs /status (STAFF actif du restaurant seulement)
 │   │   └── time/                # renvoie l'heure serveur (utilitaire)
 │   │
 │   ├── homepage/                # Landing page marketing (Hero, Personas, Témoignages…)
@@ -197,13 +201,14 @@ restivo-V1-main/
 │       │   │   └── _components/floor-plan/       # Canvas, toolbar, objets SVG, géométrie
 │       │   ├── menu/            # Gestion du menu, catégories, promotions, aperçu
 │       │   ├── reservations/    # Réservations et commandes du gérant (onglets), polling 30 s
+│       │   ├── live/            # « Live floor » : plan en direct (LiveFloorPlan), polling 20 s
 │       │   ├── staff/           # Équipe + demandes en attente
 │       │   └── ai/              # Chat « AI Manager »
 │       │
 │       └── staff/               # Espace PERSONNEL
 │           ├── page.tsx         # JoinBoard (si sans resto) ou StaffWorkspace
 │           ├── _components/     # Tableau de service, réservations du jour…
-│           └── _lib/            # Hooks + données statiques du tableau de service
+│           └── _lib/            # Hook use-service-board (routes staff, polling 20 s) + petits utilitaires
 │
 ├── contexts/
 │   └── AuthContext.tsx          # État d'authentification côté client (token en mémoire)
@@ -220,12 +225,13 @@ restivo-V1-main/
 │   ├── orders/                  # Précommandes, prix en entiers (pricing.ts), panier, menu commandable
 │   ├── locks.ts                 # Verrous consultatifs PostgreSQL (par transaction)
 │   ├── manager/                 # Côté gérant : listes, changements de statut, stats, activité, annulation attribuée
+│   ├── live/                    # Salle en direct : état des tables (state.ts), alertes (alerts.ts, alerts-service.ts), service et client
 │   ├── notifications/           # Notifications du client (création dans la transaction métier, liste, lecture)
 │   ├── favorites/               # Favoris du client : service et client HTTP
 │   ├── reviews/                 # Avis : règles pures (rules.ts), service, validation, client HTTP
-│   ├── staff/                   # Demandes d'adhésion, roster (équipe), rôles (roles.ts)
+│   ├── staff/                   # Demandes d'adhésion, roster (équipe), rôles (roles.ts), accès et tableau de service du personnel (service-rules.ts, board-service.ts)
 │   └── ai/                      # Boucle d'outils LLM, prompt, outils, suggestions
-│       └── tools/               # Registre sécurisé + outils get_restaurant/floors/menu/staff
+│       └── tools/               # Registre sécurisé + outils get_restaurant/floors/menu/staff/reservations/tables_status
 │
 ├── prisma/
 │   ├── contract.prisma          # ★ Schéma de la base (source de vérité)
@@ -436,6 +442,15 @@ flowchart TD
 | Réservation `CANCELLED` ou `NO_SHOW` | la commande ne peut plus avancer, mais peut encore être annulée |
 
 `COMPLETED`, `NO_SHOW` et `CANCELLED` libèrent la table : la disponibilité ne bloque que `PENDING`, `CONFIRMED` et `SEATED` (`BLOCKING_STATUSES`). Les compteurs du tableau de bord (`GET …/stats`) sont calculés en entiers sur le jour local du restaurant : réservations et couverts hors annulées, commandes à traiter (ouvertes, du jour ou d'avant), chiffre d'affaires des commandes non annulées rattachées au jour de leur réservation (sinon à leur création).
+
+#### g) Salle en direct, personnel et alertes
+
+1. **État des tables** (`lib/live/state.ts`, fonction pure) : une réservation `PENDING`, `CONFIRMED` ou `SEATED` retient sa table ; les autres statuts sont ignorés. Une table est `OCCUPIED` (installée, créneau non terminé, fin comprise), `OVERDUE` (installée après la fin du créneau), `RESERVED_SOON` (réservation non installée qui commence dans moins de 30 minutes, ou qui a commencé et n'a pas fini : le client en retard garde la table) ou `FREE`. La réservation suivante est renvoyée en `next`. À l'écran, une table `RESERVED_SOON` dont le créneau a commencé s'affiche « Waiting · N min late » (violet, `liveDisplay`).
+2. **Route** `GET /api/restaurants/:id/live` (accès gérant) : étages actifs, tables actives, trois requêtes de réservations par statut et un profil par client, sans N+1. La réponse porte l'heure du serveur (`now`) ; l'écran en déduit un décalage et fait tourner les chronomètres (temps écoulé et restant, retard) avec cette heure, pas celle du navigateur.
+3. **Page** `/mainpage/restaurants/live` : sélecteur d'étage, légende, plan (`FloorPlanReadOnly` avec la prop `liveTables`), panneau de la table choisie. Les boutons Seat, Complete et No-show reprennent les routes de statut existantes ; le bouton No-show n'apparaît qu'à partir de 15 minutes après le début (règle de `lib/reservations/transitions.ts`).
+4. **Alertes** (`lib/live/alerts.ts`, fonction pure) : *ARRIVING* (non installé, début dans 15 minutes au plus), *NO_SHOW_POSSIBLE* (non installé, 15 minutes après le début, créneau encore ouvert), *OVERRUN* (table `OVERDUE` avec une réservation derrière). Chaque alerte a une clé stable `type:reservationId`.
+5. **Création sans doublon, sans migration ni tâche planifiée** : les alertes sont écrites quand `/live` est lu. `lib/live/alerts-service.ts` ouvre une transaction, prend le verrou consultatif `live-alerts:<restaurantId>`, relit les clés déjà stockées (`Notification.data.alertKey`, type `SYSTEM`) et n'écrit que les manquantes, pour le propriétaire et les gérants actifs. Quatre appels simultanés ne créent donc qu'une alerte. `LiveAlertsPulse` (barre du haut du gérant) lit `/live` toutes les minutes sur les autres pages gérant, pour que les alertes arrivent dans la cloche sans que la page « Live floor » soit ouverte ; un clic sur l'alerte ouvre cette page.
+6. **Personnel** : `requireRestaurantStaff` (`lib/staff/access.ts`) exige un compte `ACTIVE` avec une adhésion `STAFF` `ACTIVE` dans CE restaurant (verdict pur : `staffAccessVerdict`). Sans token : 401. Autre restaurant, restaurant inconnu, client, OWNER ou MANAGER, adhésion inactive, compte suspendu : 403. Le personnel voit les réservations du jour (hors annulées et manquées) et les commandes du jour déjà confirmées par un gérant, **sans aucun montant**. Il peut installer (`SEATED`) et terminer (`COMPLETED`) une réservation, et faire passer une commande à `PREPARING`, `READY`, `DELIVERED` ; tout autre statut donne 403 ; les règles de transition, le verrou, l'`AuditLog` et la notification du client sont ceux du service gérant.
 
 ### 4.3 Authentification, rôles et sécurité
 
@@ -667,6 +682,7 @@ npm test
 | Fichier | Ce qui est testé |
 |---|---|
 | `lib/ai/tools/registry.test.ts` | **Sécurité de l'IA** : un propriétaire ne peut pas lire un autre restaurant ; un argument d'outil ne peut pas changer de restaurant ; un outil autorisé ne reçoit que le restaurant autorisé ; format des sources |
+| `lib/ai/tools/reservations/tools.test.ts` | Outils IA `get_reservations` et `get_tables_status` : pas d'accès à un autre restaurant, `restaurantId` et `userId` refusés dans les arguments, limite plafonnée à 40, date et statut validés, réponses sans identifiant ni montant, heures locales, libellé « Waiting · N min late », sources |
 | `lib/ai/follow-ups.test.ts` | Génération des questions de suivi : types `ask`/`pick`/`write`, cas sans prix, pas de suggestion hors des outils exécutés, cas vides |
 | `lib/auth/token-expiry.test.ts` | Lecture de l'expiration du JWT et calcul du moment de rafraîchissement silencieux |
 | `lib/restaurants/publish.test.ts` | Règle de publication (étage actif + au moins une table) et transitions de statut |
@@ -681,6 +697,11 @@ npm test
 | `lib/reservations/stats.test.ts` | Jour local d'un restaurant (fuseau), réservations, couverts, commandes à traiter et chiffre d'affaires en entiers |
 | `lib/reservations/service.integration.test.ts` | Réservations et précommandes de bout en bout (concurrence, refus, cascade). **Sautée** sans `DATABASE_URL` ou sans serveur ; `npm run test:integration` la lance contre le serveur de dev et nettoie ses données |
 | `lib/manager/manager.integration.test.ts` | Côté gérant de bout en bout : accès (401, 403, 404), listes filtrées, transitions valides et refusées (409), no-show, cascade d'annulation, annulation attribuée au restaurant, notifications créées puis lues, stats en TND, activité. Même condition d'exécution ; elle déplace dans le temps ses propres réservations de test et supprime tout ce qu'elle crée par identifiants exacts |
+| `lib/live/state.test.ts` | État des tables (libre, réservée bientôt, occupée, en dépassement), bornes pile à l'heure, créneaux enchaînés, statuts ignorés, chronomètres, libellé « Waiting · N min late » |
+| `lib/live/alerts.test.ts` | Alertes dues (arrivée, no-show possible, dépassement) aux bornes de 15 minutes, messages et clés stables |
+| `lib/staff/service-rules.test.ts` | Accès du personnel (membre actif, autre restaurant, inactif, OWNER ou MANAGER), statuts autorisés et boutons proposés |
+| `lib/live/live.integration.test.ts` | Salle en direct de bout en bout : accès (401, 403), états, **une seule alerte** pour plusieurs lectures simultanées (arrivée, no-show possible, dépassement), table occupée dès l'installation |
+| `lib/staff/board.integration.test.ts` | Tableau du personnel de bout en bout : 401 sans token, 403 (autre restaurant, client, propriétaire, compte suspendu), aucune donnée d'un autre restaurant, aucun montant, Seat / Complete seulement, étapes de cuisine, journal d'audit |
 
 > La couverture reste **partielle** : les règles pures (publication, réservation, tarification, recherche) et le parcours réservation/commande sont testés, mais les composants, l'authentification complète et les autres services métier ne le sont pas. Il n'y a pas de tests de bout en bout dans un navigateur.
 
@@ -700,11 +721,11 @@ Il n'y a pas de Prettier configuré, pas de hook Git (Husky) et pas de pipeline 
 
 ### Fonctionnalités incomplètes
 
-1. **Personnel et plan en direct** : les widgets du tableau de bord gérant (stats, réservations, commandes, activité) sont réels, mais le plan de salle du tableau de bord (`FloorPlanView`) et le tableau de service du personnel (`staff/_lib/board.ts`) affichent encore des **données statiques** (voir §10).
-2. **Espace client** : dynamique depuis la V1 (voir §9). Le nom « Ahmed » subsiste dans des maquettes côté gérant et personnel (`RestaurantTopNav`, `ReservationsWidget`, `FloorPlanView`, `staff/_lib/board.ts`).
+1. **Plan du tableau de bord** : le widget `FloorPlanView` de la page d'accueil gérant reste une maquette statique ; le plan réel est la page « Live floor ». Dans l'espace du personnel, les sections *Tables*, *Menu* et *Notifications* sont des écrans d'attente.
+2. **Espace client** : dynamique depuis la V1 (voir §9). Le nom « Ahmed » subsiste dans des maquettes côté gérant (`RestaurantTopNav`, `ReservationsWidget`, `FloorPlanView`).
 3. **Fiche restaurant** : la modification est enregistrée (`PATCH /api/restaurants/:id`), mais le logo et la couverture se saisissent par URL, sans envoi de fichier.
 4. **Médias** : la table `Media` n'est pas utilisée. L'upload d'images se limite à des URL ou à des photos prédéfinies.
-5. **Rôles de l'équipe** : l'OWNER peut nommer ou retirer un MANAGER, mais le rôle `STAFF` ne peut encore ni lister ni changer le statut des réservations et commandes (voir §10).
+5. **Rôles de l'équipe** : l'OWNER peut nommer ou retirer un MANAGER. Le personnel ne peut ni annuler, ni déclarer un no-show, ni confirmer une commande en attente, et il n'a pas de saisie de commande en salle.
 6. **OAuth Google / Apple** : boutons factices.
 7. **Historique du chat IA** : non persisté.
 8. **Menu côté gérant** : réordonnancement par boutons ↑ ↓ uniquement (pas de glisser-déposer), pas d'étiquettes (végétarien, épicé…), images de plats par URL. Le réglage « Published » du panneau *Menu settings* publie sans l'avertissement de menu vide de l'en-tête, et le formulaire de promotion se vide même quand le serveur refuse la saisie.
@@ -739,7 +760,7 @@ Il n'y a pas de Prettier configuré, pas de hook Git (Husky) et pas de pipeline 
 
 - Prise de réservation par le client sur le plan de salle réel, en s'appuyant sur les `Table` et `capacity` déjà en place.
 - Prise de commande en salle par le personnel, avec un suivi en temps réel (WebSocket ou SSE) pour remplacer les données statiques du tableau de service.
-- Outils IA supplémentaires (réservations, ventes) une fois ces données disponibles. Le registre est conçu pour cela : il suffit d'ajouter un outil à la liste blanche.
+- Outils IA : `get_reservations` (réservations d'un jour, filtre de statut) et `get_tables_status` (état des tables en ce moment, sans écrire d'alertes) sont dans la liste blanche, en lecture seule ; restent à ajouter les commandes et les ventes. Le registre est conçu pour cela : il suffit d'ajouter un outil à la liste blanche.
 - Vue 3D du plan de salle : le champ `FloorObject.data` est annoté « *Flexible data for future 3D rendering* ».
 - Tableau de bord de l'`AuditLog` pour les propriétaires.
 
@@ -806,14 +827,14 @@ Toutes ces routes exigent un compte `ACTIVE` (Bearer) : l'identité vient toujou
 
 ## 10. Prochaine étape
 
-**Non implémenté** : le plan de salle en direct et le côté personnel. Le tableau de bord gérant, la liste des réservations et des commandes et les notifications du client sont réels (voir §4.2 f et §9) ; il reste la maquette du plan de salle du tableau de bord (`FloorPlanView`) et le tableau de service du personnel (`staff/_lib/board.ts`), qui affichent encore des données statiques.
+**Fait** : le plan en direct, les chronomètres, les alertes vers les gérants et l'espace du personnel branché sur la base (voir §4.2 g).
 
 À faire, dans cet ordre :
 
-1. **Plan en direct** : remplacer les tables et réservations factices de `FloorPlanView` par les vraies tables de l'étage et l'état dérivé des réservations du moment (libre, réservée, installée, à nettoyer), avec les routes déjà en place.
-2. **Chronomètres** : durée écoulée depuis l'installation (`SEATED`), temps restant sur le créneau de 90 minutes, alerte de dépassement, et délai d'attente des commandes (`PENDING` à `READY`).
-3. **Personnel** : brancher le tableau de service du personnel sur les mêmes routes, avec des droits adaptés (le rôle `STAFF` ne peut aujourd'hui ni lister ni changer de statut), et saisie d'une commande en salle (`Order` sans réservation).
-4. **Temps réel** : remplacer le polling de 30 s par un flux SSE, une fois les écrans stables ; ajouter les avis (`Review`) et les favoris du client.
+1. **Plan du tableau de bord** : remplacer la maquette `FloorPlanView` par le plan en direct, ou le retirer.
+2. **Personnel** : saisie d'une commande en salle (`Order` sans réservation), état « à nettoyer » des tables, sections *Tables* et *Notifications* du personnel.
+3. **Alertes** : nettoyer ou indexer les notifications `SYSTEM` expirées (la déduplication les relit à chaque appel qui a des alertes dues) et ajouter des alertes sur les commandes en retard.
+4. **Temps réel** : remplacer le polling de 20 à 30 s par un flux SSE, une fois les écrans stables.
 
 ---
 

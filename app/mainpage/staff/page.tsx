@@ -57,7 +57,7 @@ export default function StaffPage() {
 
   return (
     <div className="py-1">
-      <StaffWorkspace greeting={greeting} dateLabel={dateLabel} />
+      <StaffWorkspace greeting={greeting} dateLabel={dateLabel} restaurantId={board.membership.restaurantId} />
     </div>
   );
 }

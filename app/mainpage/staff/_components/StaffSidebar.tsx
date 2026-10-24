@@ -17,7 +17,6 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { profileInitials } from "../../_lib/profile";
-import { NOTIFICATIONS } from "../_lib/board";
 import type { StaffSectionId } from "../_lib/types";
 import { useStaffChrome } from "../_context/staff-chrome";
 
@@ -106,11 +105,6 @@ function SidebarBody({
               >
                 <Icon className={`h-4 w-4 ${active ? "text-[#B55234]" : "text-[#7B756E]"}`} strokeWidth={active ? 2.3 : 1.9} />
                 <span className="flex-1">{item.label}</span>
-                {item.id === "notifications" && (
-                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#E24B4B] px-1 text-[10px] font-bold text-white">
-                    {NOTIFICATIONS.length}
-                  </span>
-                )}
               </button>
             );
           })}
