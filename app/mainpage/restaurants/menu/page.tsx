@@ -262,7 +262,7 @@ export default function MenuPage() {
   const preview = previewOpen ? previewBookMenu(menu) : null;
 
   return (
-    <div className="flex flex-col gap-0 select-none animate-in fade-in duration-300">
+    <div data-tour="manager-page-menu" className="flex flex-col gap-0 select-none animate-in fade-in duration-300">
       <MenuHeader
         title={menu.name}
         isPublished={menu.isPublished}

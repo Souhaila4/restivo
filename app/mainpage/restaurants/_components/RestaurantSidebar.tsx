@@ -310,6 +310,7 @@ export function RestaurantSidebar() {
                     setMobileMenuOpen(false);
                   }}
                   className={className}
+                  data-tour={`manager-nav-${item.id}`}
                 >
                   {content}
                 </Link>

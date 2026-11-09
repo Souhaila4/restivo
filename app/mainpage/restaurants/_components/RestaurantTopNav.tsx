@@ -7,7 +7,6 @@ import Link from "next/link";
 import {
   Menu,
   Search,
-  HelpCircle,
   ChevronDown,
   Home,
   Plus,
@@ -17,6 +16,7 @@ import { useRestaurantManager } from "../_context/RestaurantManagerContext";
 import { LiveAlertsPulse } from "./live/LiveAlertsPulse";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePathname } from "next/navigation";
+import { TourHelpButton } from "@/components/TourGuide";
 
 export function RestaurantTopNav() {
   const {
@@ -63,6 +63,7 @@ export function RestaurantTopNav() {
         {/* Breadcrumb matching image: "🏠 Maison Olive / Overview" */}
         <div className="flex items-center gap-2 text-xs sm:text-[13px] text-[#736D65] font-medium">
           <button
+            data-tour="manager-profile"
             onClick={() => openRestaurantProfile(currentRestaurant)}
             className="flex items-center gap-1.5 hover:text-[#B55234] transition-colors"
             title="Click to view Restaurant Profile"
@@ -92,16 +93,12 @@ export function RestaurantTopNav() {
         </div>
 
         <LiveAlertsPulse restaurantId={currentRestaurant?.id ?? null} />
-        <NotificationBell />
+        <span data-tour="manager-bell" className="inline-flex">
+          <NotificationBell />
+        </span>
 
         {/* Help icon button */}
-        <button
-          onClick={() => alert("Restivo Restaurant Manager v2.4\nFast support: help@restivo.app")}
-          className="w-8 h-8 rounded-full bg-white/80 hover:bg-white border border-[#E8E4DA] flex items-center justify-center text-[#4A4643] hover:text-[#1A1A1A] transition-all shadow-2xs"
-          aria-label="Help"
-        >
-          <HelpCircle className="w-3.5 h-3.5" />
-        </button>
+        <TourHelpButton />
 
         {/* User pill */}
         <div className="relative">
